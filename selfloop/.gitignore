@@ -1,0 +1,5 @@
+models/
+runs/*/adapter_*/
+__pycache__/
+*.npz
+.pytest_cache/
