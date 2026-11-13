@@ -33,3 +33,36 @@ python -m pytest -q
 ```
 
 Use `--model` for a larger model; everything else stays the same.
+
+## Results so far (SmolLM2-135M, CPU, one seed)
+
+Bits per token on the following, unseen week. Lower is better. Five weekly cycles,
+200 fresh cs.CL papers per week (100 for the half-data policies).
+
+| run | what changes | cycles accepted | final candidate | final base+retrieval |
+|---|---|---|---|---|
+| `all` | fresh data, no anchor replay | 1/5 | 5.223 | 5.300 |
+| `anchor` | fresh data + general anchor replay | 5/5 | 5.148 | 5.300 |
+| `stale` | 2022 cs.CL data + anchor replay | 3/5 | 5.366 | 5.300 |
+| `random` | random half of fresh data + anchor | 5/5 | 5.202 | 5.300 |
+| `hard` | hardest half of fresh data + anchor | 2/5 | 5.230 | 5.300 |
+
+Base model on the final week: 5.464.
+
+- Without general replay, every later cycle is rejected for out-of-domain regression
+  (about +0.07 bits/token against a limit of +0.042). Anchor replay holds it near +0.02.
+- Training on fresh data beats retrieval alone in every cycle, and the gap widens
+  (0.04 to 0.15). Training plus retrieval is best throughout.
+- About a third of the gain is reachable from old in-domain data (style and domain);
+  the rest needs recent data. Stale training stops improving after two cycles.
+- Choosing the documents the model predicts worst did not beat a random half on fresh
+  data and caused more out-of-domain regression, enough to fail the gate from cycle 2.
+  After a rejection the two runs continue from different adapters, so only cycles 0-1
+  compare like for like.
+
+Limits: one seed, a 135M model, and a text-prediction metric rather than factual QA.
+The bootstrap intervals cover document sampling, not training randomness.
+
+```
+python -m selfloop.report runs/all runs/anchor runs/stale runs/random runs/hard
+```

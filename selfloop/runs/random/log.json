@@ -1,0 +1,267 @@
+[
+ {
+  "cycle": 0,
+  "train_window": 0,
+  "test_window": 1,
+  "n_train": 100,
+  "n_replay": 0,
+  "n_anchor": 50,
+  "train_loss": 3.3733,
+  "bpt": {
+   "base": 5.450988687745854,
+   "base+retrieval": 5.297660689792994,
+   "incumbent": 5.450988687745854,
+   "candidate": 5.306987026653565,
+   "candidate+retrieval": 5.239036712600636
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.14400166109228874,
+   "lo": -0.15172412613681152,
+   "hi": -0.1360282757575095
+  },
+  "candidate_vs_base": {
+   "diff": -0.14400166109228874,
+   "lo": -0.15172412613681152,
+   "hi": -0.1360282757575095
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.00932633686057116,
+   "lo": -0.0023027917472614877,
+   "hi": 0.021420676721525016
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.05862397719235801,
+   "lo": -0.06483441703325239,
+   "hi": -0.05209502027361206
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.04415788620170957,
+    "lo": -0.05232744280756608,
+    "hi": -0.03571451295323097
+   },
+   "core_general": {
+    "diff": -0.0036495513748668884,
+    "lo": -0.011399643193822143,
+    "hi": 0.0036356619203664333
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 541
+ },
+ {
+  "cycle": 1,
+  "train_window": 1,
+  "test_window": 2,
+  "n_train": 100,
+  "n_replay": 50,
+  "n_anchor": 50,
+  "train_loss": 3.4172,
+  "bpt": {
+   "base": 5.421407674889483,
+   "base+retrieval": 5.282242933453376,
+   "incumbent": 5.276726732811979,
+   "candidate": 5.216042346925655,
+   "candidate+retrieval": 5.178183714069023
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.060684385886323966,
+   "lo": -0.06522934047811274,
+   "hi": -0.0562527159649454
+  },
+  "candidate_vs_base": {
+   "diff": -0.20536532796382811,
+   "lo": -0.2162215397488161,
+   "hi": -0.19476722605109031
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.06620058652772087,
+   "lo": -0.07793439560535916,
+   "hi": -0.053993307489049805
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.10405921938435281,
+   "lo": -0.11301522335964162,
+   "hi": -0.09464160113613408
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.03590798335673551,
+    "lo": -0.04655044878963549,
+    "hi": -0.02516889142837481
+   },
+   "core_general": {
+    "diff": 0.009855064406242064,
+    "lo": 0.000735738883503075,
+    "hi": 0.018476160745749398
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 658
+ },
+ {
+  "cycle": 2,
+  "train_window": 2,
+  "test_window": 3,
+  "n_train": 100,
+  "n_replay": 50,
+  "n_anchor": 50,
+  "train_loss": 3.3745,
+  "bpt": {
+   "base": 5.507114159650949,
+   "base+retrieval": 5.348607429019059,
+   "incumbent": 5.296465804323453,
+   "candidate": 5.264184911090891,
+   "candidate+retrieval": 5.2172300840198975
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.03228089323256178,
+   "lo": -0.03507005071516865,
+   "hi": -0.029648740123867368
+  },
+  "candidate_vs_base": {
+   "diff": -0.24292924856005804,
+   "lo": -0.2545559984333188,
+   "hi": -0.23089660938927115
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.0844225179281679,
+   "lo": -0.09729251118386403,
+   "hi": -0.0717383941238899
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.13137734499916132,
+   "lo": -0.14155313525041321,
+   "hi": -0.12119156013009999
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.036502835272202105,
+    "lo": -0.04789229834732963,
+    "hi": -0.02481586254992798
+   },
+   "core_general": {
+    "diff": 0.013820410728905053,
+    "lo": 0.004076260647702056,
+    "hi": 0.023456597648337393
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 654
+ },
+ {
+  "cycle": 3,
+  "train_window": 3,
+  "test_window": 4,
+  "n_train": 100,
+  "n_replay": 50,
+  "n_anchor": 50,
+  "train_loss": 3.4533,
+  "bpt": {
+   "base": 5.423511134236186,
+   "base+retrieval": 5.252113754213389,
+   "incumbent": 5.181680044720447,
+   "candidate": 5.161853365847202,
+   "candidate+retrieval": 5.110353709180211
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.019826678873244852,
+   "lo": -0.02268524904626912,
+   "hi": -0.01703460511145048
+  },
+  "candidate_vs_base": {
+   "diff": -0.261657768388984,
+   "lo": -0.2759750092657228,
+   "hi": -0.2466821305044057
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.090260388366187,
+   "lo": -0.10535694971037186,
+   "hi": -0.07499858266457009
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.14176004503317774,
+   "lo": -0.15326365760976113,
+   "hi": -0.12958707907304265
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.030447699648426862,
+    "lo": -0.04200761840257175,
+    "hi": -0.018104059684943632
+   },
+   "core_general": {
+    "diff": 0.019835890831602754,
+    "lo": 0.01003214583081014,
+    "hi": 0.029635081206726924
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 628
+ },
+ {
+  "cycle": 4,
+  "train_window": 4,
+  "test_window": 5,
+  "n_train": 100,
+  "n_replay": 50,
+  "n_anchor": 50,
+  "train_loss": 3.3938,
+  "bpt": {
+   "base": 5.4641990386420485,
+   "base+retrieval": 5.300089616729241,
+   "incumbent": 5.215048157533522,
+   "candidate": 5.202016773383523,
+   "candidate+retrieval": 5.156707245291651
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.013031384149998715,
+   "lo": -0.015239992012511402,
+   "hi": -0.010637371000676332
+  },
+  "candidate_vs_base": {
+   "diff": -0.2621822652585255,
+   "lo": -0.27656846141468505,
+   "hi": -0.24732573967255586
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.09807284334571786,
+   "lo": -0.11725410351461671,
+   "hi": -0.07653310934770512
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.14338237143758992,
+   "lo": -0.15490743832178272,
+   "hi": -0.1318155601877514
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.030047652617667175,
+    "lo": -0.04197975959759192,
+    "hi": -0.01772874817838798
+   },
+   "core_general": {
+    "diff": 0.021738290041065866,
+    "lo": 0.011469961678263573,
+    "hi": 0.03219072525019512
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 634
+ }
+]
