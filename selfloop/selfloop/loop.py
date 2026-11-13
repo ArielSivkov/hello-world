@@ -49,6 +49,9 @@ def main() -> None:
     ap.add_argument("--model", default="models/SmolLM2-135M")
     ap.add_argument("--policy", default="all", choices=["all", "random", "hard"])
     ap.add_argument("--replay", type=float, default=0.5, help="old docs per new doc")
+    ap.add_argument("--train-dir", type=Path, default=None,
+                    help="take training windows from here instead of --data (staleness control)")
+    ap.add_argument("--anchor", type=float, default=0.0, help="general anchor docs per new doc")
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--no-gate", action="store_true", help="accept every candidate")
@@ -59,6 +62,9 @@ def main() -> None:
     a.out.mkdir(parents=True, exist_ok=True)
     windows = [load_jsonl(p) for p in sorted(a.data.glob("window_*.jsonl"))]
     cores = {n: load_jsonl(a.data / f"{n}.jsonl") for n in ("core_domain_old", "core_general")}
+    anchor_docs = load_jsonl(a.data / "anchor_general.jsonl") if a.anchor > 0 else []
+    train_windows = windows if a.train_dir is None else \
+        [load_jsonl(p) for p in sorted(a.train_dir.glob("window_*.jsonl"))]
     tok = load_tokenizer(a.model)
 
     # base-model scores never change, so they are cached and shared across runs
@@ -90,7 +96,7 @@ def main() -> None:
     log = []
     for t in range(len(windows) - 1):
         t0 = time.time()
-        new, test = windows[t], windows[t + 1]
+        new, test = train_windows[t], windows[t + 1]
         if incumbent is None:
             model = new_adapter(load_model(a.model))
             inc = base_fresh[t + 1]
@@ -100,7 +106,9 @@ def main() -> None:
         sel_scores = score(model, tok, new) if a.policy == "hard" else (None, None)
         chosen = select(a.policy, new, *sel_scores, seed=a.seed + t)
         replay = random.Random(a.seed + t).sample(pool, min(len(pool), int(a.replay * len(chosen))))
-        loss = train(model, tok, chosen + replay, a.epochs, lr=a.lr, seed=a.seed + t)
+        anchor = random.Random(a.seed + 1000 + t).sample(
+            anchor_docs, min(len(anchor_docs), int(a.anchor * len(chosen))))
+        loss = train(model, tok, chosen + replay + anchor, a.epochs, lr=a.lr, seed=a.seed + t)
 
         cand_fresh = score(model, tok, test)
         cand_core = {n: score(model, tok, d) for n, d in cores.items()}
@@ -115,7 +123,7 @@ def main() -> None:
 
         row = {
             "cycle": t, "train_window": t, "test_window": t + 1,
-            "n_train": len(chosen), "n_replay": len(replay), "train_loss": round(loss, 4),
+            "n_train": len(chosen), "n_replay": len(replay), "n_anchor": len(anchor), "train_loss": round(loss, 4),
             "bpt": {
                 "base": bits_per_token(*base_fresh[t + 1]),
                 "base+retrieval": bits_per_token(*base_rag[t + 1]),

@@ -1,0 +1,267 @@
+[
+ {
+  "cycle": 0,
+  "train_window": 0,
+  "test_window": 1,
+  "n_train": 200,
+  "n_replay": 0,
+  "n_anchor": 100,
+  "train_loss": 3.3584,
+  "bpt": {
+   "base": 5.450988687745854,
+   "base+retrieval": 5.297660689792994,
+   "incumbent": 5.450988687745854,
+   "candidate": 5.255978565099172,
+   "candidate+retrieval": 5.2054405046572265
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.19501012264668205,
+   "lo": -0.20516655314795526,
+   "hi": -0.18452297939583268
+  },
+  "candidate_vs_base": {
+   "diff": -0.19501012264668205,
+   "lo": -0.20516655314795526,
+   "hi": -0.18452297939583268
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.04168212469382215,
+   "lo": -0.053198940472313085,
+   "hi": -0.029805732531432955
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.09222018513576735,
+   "lo": -0.10058329839641185,
+   "hi": -0.08382758015498419
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.04308609187667933,
+    "lo": -0.05335999387017689,
+    "hi": -0.032830494628054804
+   },
+   "core_general": {
+    "diff": 0.0023012725510680454,
+    "lo": -0.006574749415498539,
+    "hi": 0.010573241057573233
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 848
+ },
+ {
+  "cycle": 1,
+  "train_window": 1,
+  "test_window": 2,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 3.386,
+  "bpt": {
+   "base": 5.421407674889483,
+   "base+retrieval": 5.282242933453376,
+   "incumbent": 5.223343183864932,
+   "candidate": 5.165589476104261,
+   "candidate+retrieval": 5.14183818354513
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.05775370776067135,
+   "lo": -0.06269619378175201,
+   "hi": -0.05268432620048489
+  },
+  "candidate_vs_base": {
+   "diff": -0.2558181987852226,
+   "lo": -0.2695526272760247,
+   "hi": -0.24190720465284496
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.11665345734911536,
+   "lo": -0.12964202857505192,
+   "hi": -0.10333380891186549
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.14040474990824592,
+   "lo": -0.1516953233527973,
+   "hi": -0.12870631444406047
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.03014352523921282,
+    "lo": -0.042170748037234855,
+    "hi": -0.018260930368414762
+   },
+   "core_general": {
+    "diff": 0.020260545325522017,
+    "lo": 0.010461642134904995,
+    "hi": 0.029631257251000742
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 988
+ },
+ {
+  "cycle": 2,
+  "train_window": 2,
+  "test_window": 3,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 3.3643,
+  "bpt": {
+   "base": 5.507114159650949,
+   "base+retrieval": 5.348607429019059,
+   "incumbent": 5.243589180620348,
+   "candidate": 5.210875107450201,
+   "candidate+retrieval": 5.18084862403607
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.03271407317014674,
+   "lo": -0.03579352199418764,
+   "hi": -0.029648849510092414
+  },
+  "candidate_vs_base": {
+   "diff": -0.29623905220074764,
+   "lo": -0.3105501309803722,
+   "hi": -0.2813340470589882
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.1377323215688575,
+   "lo": -0.1523182903310036,
+   "hi": -0.12369384421365742
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.16775880498298879,
+   "lo": -0.18050701693173873,
+   "hi": -0.15511140485528932
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.035135984145568955,
+    "lo": -0.047520286895378384,
+    "hi": -0.023012364832768913
+   },
+   "core_general": {
+    "diff": 0.01834873763510103,
+    "lo": 0.008816840345884225,
+    "hi": 0.02811123487576081
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 941
+ },
+ {
+  "cycle": 3,
+  "train_window": 3,
+  "test_window": 4,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 3.3873,
+  "bpt": {
+   "base": 5.423511134236186,
+   "base+retrieval": 5.252113754213389,
+   "incumbent": 5.131791700357383,
+   "candidate": 5.109670843060586,
+   "candidate+retrieval": 5.071463228882604
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.022120857296797247,
+   "lo": -0.024902979372618036,
+   "hi": -0.019360458449505083
+  },
+  "candidate_vs_base": {
+   "diff": -0.3138402911756,
+   "lo": -0.3305425437878657,
+   "hi": -0.2959987815606742
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.14244291115280294,
+   "lo": -0.15847829690244392,
+   "hi": -0.1261033179855836
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.18065052533078507,
+   "lo": -0.19436054474246253,
+   "hi": -0.16650864394554263
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.03062495269415688,
+    "lo": -0.04310563191208767,
+    "hi": -0.017772414479082038
+   },
+   "core_general": {
+    "diff": 0.01703435047795221,
+    "lo": 0.006835969420243371,
+    "hi": 0.027344990532958312
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 988
+ },
+ {
+  "cycle": 4,
+  "train_window": 4,
+  "test_window": 5,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 3.3299,
+  "bpt": {
+   "base": 5.4641990386420485,
+   "base+retrieval": 5.300089616729241,
+   "incumbent": 5.166185000474117,
+   "candidate": 5.148483096924553,
+   "candidate+retrieval": 5.118205746962589
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.017701903549563802,
+   "lo": -0.020192777775455157,
+   "hi": -0.015092317272224168
+  },
+  "candidate_vs_base": {
+   "diff": -0.31571594171749506,
+   "lo": -0.3321040442618378,
+   "hi": -0.29867619341265783
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.15160651980468742,
+   "lo": -0.17210395601798567,
+   "hi": -0.1294693411710517
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.1818838697666516,
+   "lo": -0.19557627212697215,
+   "hi": -0.16860790724892885
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.03787796156083001,
+    "lo": -0.050494668298243284,
+    "hi": -0.024529791819818278
+   },
+   "core_general": {
+    "diff": 0.01834548869053343,
+    "lo": 0.008162647150021237,
+    "hi": 0.028454587059791623
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 1054
+ }
+]

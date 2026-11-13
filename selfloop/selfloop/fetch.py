@@ -15,6 +15,13 @@ CORE = {
                      ("q-bio.NC", "20220301", "20220331"), ("econ.GN", "20220301", "20220331")],
 }
 
+# General text used as replay to hold general ability in place. Its categories are
+# deliberately different from the core test categories, so it is not teaching to the test.
+ANCHOR = {
+    "anchor_general": [("astro-ph.GA", "20220401", "20220410"), ("cond-mat.mtrl-sci", "20220401", "20220407"),
+                       ("stat.ME", "20220401", "20220420"), ("cs.DS", "20220401", "20220430")],
+}
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -24,6 +31,7 @@ def main() -> None:
     ap.add_argument("--windows", type=int, default=6)
     ap.add_argument("--per-window", type=int, default=200)
     ap.add_argument("--core-size", type=int, default=120)
+    ap.add_argument("--anchor-size", type=int, default=400)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
 
@@ -41,12 +49,12 @@ def main() -> None:
         save_jsonl(path, picked)
         print(f"window {w} {s}..{e}: fetched {len(docs)}, kept {len(picked)}", flush=True)
 
-    for name, parts in CORE.items():
+    for name, parts in {**CORE, **ANCHOR}.items():
         path = a.out / f"{name}.jsonl"
         if path.exists():
             continue
         docs = []
-        per = a.core_size // len(parts)
+        per = (a.anchor_size if name in ANCHOR else a.core_size) // len(parts)
         for i, (cat, s, e) in enumerate(parts):
             got = fetch_window(cat, s, e, limit=300)
             docs += sample(got, per, a.seed + 100 + i)
