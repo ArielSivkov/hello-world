@@ -1,0 +1,32 @@
+{"id": "web-000", "cat": "web", "ok": false, "answer": "העיר דימונה נוסדה ב-1492.", "steps": 1, "secs": 1.3, "trace": [["model", "העיר דימונה נוסדה ב-1492."]]}
+{"id": "web-001", "cat": "web", "ok": false, "answer": "נתן אלתרמן נולד ב-1905.", "steps": 1, "secs": 1.3, "trace": [["model", "נתן אלתרמן נולד ב-1905."]]}
+{"id": "web-002", "cat": "web", "ok": false, "answer": "Ashdod הוקמה ב-1924.", "steps": 1, "secs": 1.1, "trace": [["model", "Ashdod הוקמה ב-1924."]]}
+{"id": "web-003", "cat": "web", "ok": false, "answer": "נתניה נוסדה ב-1948.", "steps": 1, "secs": 0.9, "trace": [["model", "נתניה נוסדה ב-1948."]]}
+{"id": "web-004", "cat": "web", "ok": false, "answer": "1769.", "steps": 1, "secs": 0.5, "trace": [["model", "1769."]]}
+{"id": "web-005", "cat": "web", "ok": false, "answer": "שמואל יוסף עגנון נפטר ב-1956.", "steps": 1, "secs": 1.3, "trace": [["model", "שמואל יוסף עגנון נפטר ב-1956."]]}
+{"id": "web-006", "cat": "web", "ok": false, "answer": "Rachel, בת של יacob, נולדה ב-29 ביולי 1840.", "steps": 1, "secs": 2.0, "trace": [["model", "Rachel, בת של יacob, נולדה ב-29 ביולי 1840."]]}
+{"id": "web-007", "cat": "web", "ok": false, "answer": "אה גולדברג נולדה ב-1972.", "steps": 1, "secs": 1.2, "trace": [["model", "אה גולדברג נולדה ב-1972."]]}
+{"id": "multistep-008", "cat": "multistep", "ok": false, "answer": "4 שנים", "steps": 1, "secs": 0.4, "trace": [["model", "4 שנים"]]}
+{"id": "multistep-009", "cat": "multistep", "ok": true, "answer": "Rachel Masharet fulfills the Garden of Eden in 21 years.", "steps": 1, "secs": 1.5, "trace": [["model", "Rachel Masharet fulfills the Garden of Eden in 21 years."]]}
+{"id": "multistep-010", "cat": "multistep", "ok": false, "answer": "25", "steps": 1, "secs": 0.3, "trace": [["model", "25"]]}
+{"id": "multistep-011", "cat": "multistep", "ok": false, "answer": "הגיעתי לנהר של 2,800 שנים.", "steps": 1, "secs": 1.4, "trace": [["model", "הגיעתי לנהר של 2,800 שנים."]]}
+{"id": "multistep-012", "cat": "multistep", "ok": false, "answer": "54 лет.", "steps": 1, "secs": 0.5, "trace": [["model", "54 лет."]]}
+{"id": "multistep-013", "cat": "multistep", "ok": false, "answer": "40 years.", "steps": 1, "secs": 0.5, "trace": [["model", "40 years."]]}
+{"id": "basic-014", "cat": "basic", "ok": false, "answer": "הערבוב של כחול וצהוב מקבלת צבע אדום.", "steps": 1, "secs": 1.6, "trace": [["model", "הערבוב של כחול וצהוב מקבלת צבע אדום."]]}
+{"id": "basic-015", "cat": "basic", "ok": true, "answer": "בירת צרפת היא פריז.", "steps": 1, "secs": 0.8, "trace": [["model", "בירת צרפת היא פריז."]]}
+{"id": "basic-016", "cat": "basic", "ok": true, "answer": "dog", "steps": 1, "secs": 0.3, "trace": [["model", "dog"]]}
+{"id": "basic-017", "cat": "basic", "ok": false, "answer": "Jerusalem.", "steps": 1, "secs": 0.4, "trace": [["model", "Jerusalem."]]}
+{"id": "basic-018", "cat": "basic", "ok": false, "answer": "riviera", "steps": 1, "secs": 0.3, "trace": [["model", "riviera"]]}
+{"id": "basic-019", "cat": "basic", "ok": false, "answer": "ראש הממשלה הראשון של מדינת ישראל היה מרדכי lickין.", "steps": 1, "secs": 1.2, "trace": [["model", "ראש הממשלה הראשון של מדינת ישראל היה מרדכי lickין."]]}
+{"id": "calc-020", "cat": "calc", "ok": false, "answer": "2817 * 7621 = 21,596,147", "steps": 1, "secs": 1.9, "trace": [["model", "2817 * 7621 = 21,596,147"]]}
+{"id": "calc-021", "cat": "calc", "ok": false, "answer": "812858 + 6148 * 1815 = 1398000", "steps": 1, "secs": 2.4, "trace": [["model", "812858 + 6148 * 1815 = 1398000"]]}
+{"id": "calc-022", "cat": "calc", "ok": false, "answer": "181370 / 70 + 3988 = 2605.2857", "steps": 1, "secs": 2.6, "trace": [["model", "181370 / 70 + 3988 = 2605.2857"]]}
+{"id": "calc-023", "cat": "calc", "ok": false, "answer": "3684 * 5542 = 2,071,942,880", "steps": 1, "secs": 2.4, "trace": [["model", "3684 * 5542 = 2,071,942,880"]]}
+{"id": "calc-024", "cat": "calc", "ok": false, "answer": "781900 + 2034 * 4032 = 781900 + 8166528 = 8948428", "steps": 1, "secs": 3.7, "trace": [["model", "781900 + 2034 * 4032 = 781900 + 8166528 = 8948428"]]}
+{"id": "calc-025", "cat": "calc", "ok": false, "answer": "44826 / 31 + 8606 = 2705.9703", "steps": 1, "secs": 2.4, "trace": [["model", "44826 / 31 + 8606 = 2705.9703"]]}
+{"id": "longdoc-026", "cat": "longdoc", "ok": false, "answer": "קוד הפריט \"תיבה מנחושת\" הוא HU-1931.", "steps": 1, "secs": 14.5, "trace": [["model", "קוד הפריט \"תיבה מנחושת\" הוא HU-1931."]]}
+{"id": "longdoc-027", "cat": "longdoc", "ok": false, "answer": "פריט 'פמוט משיש' נמצא על מדף משיש, קוד HM-8630.", "steps": 1, "secs": 13.2, "trace": [["model", "פריט 'פמוט משיש' נמצא על מדף משיש, קוד HM-8630."]]}
+{"id": "longdoc-028", "cat": "longdoc", "ok": false, "answer": "קוד התגיה של הפריט \"מגש מנחושת\" הוא HU-8444.", "steps": 1, "secs": 14.1, "trace": [["model", "קוד התגיה של הפריט \"מגש מנחושת\" הוא HU-8444."]]}
+{"id": "longdoc-029", "cat": "longdoc", "ok": false, "answer": "פריט 8.", "steps": 1, "secs": 11.8, "trace": [["model", "פריט 8."]]}
+{"id": "longdoc-030", "cat": "longdoc", "ok": false, "answer": "קוד הקod של הפריט \"סולם מכסף\" הוא HS-1095.", "steps": 1, "secs": 13.6, "trace": [["model", "קוד הקod של הפריט \"סולם מכסף\" הוא HS-1095."]]}
+{"id": "longdoc-031", "cat": "longdoc", "ok": false, "answer": "פריט 34.", "steps": 1, "secs": 12.1, "trace": [["model", "פריט 34."]]}

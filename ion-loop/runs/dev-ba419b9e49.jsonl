@@ -1,0 +1,38 @@
+{"id": "web-000", "cat": "web", "ok": true, "answer": "1955", "steps": 1, "secs": 1.8, "trace": [["model", "1955"]]}
+{"id": "web-001", "cat": "web", "ok": true, "answer": "נתן אלתרמן נולד ב-14 באוגוסט 1910.", "steps": 1, "secs": 4.9, "trace": [["model", "נתן אלתרמן נולד ב-14 באוגוסט 1910."]]}
+{"id": "web-002", "cat": "web", "ok": true, "answer": "1956", "steps": 1, "secs": 2.2, "trace": [["model", "1956"]]}
+{"id": "web-003", "cat": "web", "ok": true, "answer": "1929", "steps": 1, "secs": 1.9, "trace": [["model", "1929"]]}
+{"id": "web-004", "cat": "web", "ok": true, "answer": "1886", "steps": 1, "secs": 3.5, "trace": [["model", "1886"]]}
+{"id": "web-005", "cat": "web", "ok": true, "answer": "1970", "steps": 1, "secs": 4.6, "trace": [["model", "1970"]]}
+{"id": "web-006", "cat": "web", "ok": true, "answer": "1890.", "steps": 1, "secs": 3.7, "trace": [["model", "1890."]]}
+{"id": "web-007", "cat": "web", "ok": true, "answer": "1911", "steps": 1, "secs": 3.3, "trace": [["model", "1911"]]}
+{"id": "multistep-008", "cat": "multistep", "ok": false, "answer": "12 years", "steps": 1, "secs": 3.0, "trace": [["model", "12 years"]]}
+{"id": "multistep-009", "cat": "multistep", "ok": false, "answer": "1970 - 1931 = 39年人類", "steps": 1, "secs": 4.4, "trace": [["model", "1970 - 1931 = 39年人類"]]}
+{"id": "multistep-010", "cat": "multistep", "ok": false, "answer": "16.5", "steps": 1, "secs": 3.3, "trace": [["model", "16.5"]]}
+{"id": "multistep-011", "cat": "multistep", "ok": false, "answer": "12 years", "steps": 1, "secs": 3.1, "trace": [["model", "12 years"]]}
+{"id": "multistep-012", "cat": "multistep", "ok": false, "answer": "18", "steps": 1, "secs": 3.3, "trace": [["model", "18"]]}
+{"id": "multistep-013", "cat": "multistep", "ok": false, "answer": "12.5", "steps": 1, "secs": 3.6, "trace": [["model", "12.5"]]}
+{"id": "basic-014", "cat": "basic", "ok": true, "answer": "בית - house", "steps": 1, "secs": 0.5, "trace": [["model", "בית - house"]]}
+{"id": "basic-015", "cat": "basic", "ok": true, "answer": "ההפך של המילה \"גדול\" הוא \"קטן\".", "steps": 1, "secs": 1.1, "trace": [["model", "ההפך של המילה \"גדול\" הוא \"קטן\"."]]}
+{"id": "basic-016", "cat": "basic", "ok": false, "answer": "הצבע המתקבל מערבוב של כחול וצהוב הוא כהיר.", "steps": 1, "secs": 4.6, "trace": [["model", "הצבע המתקבל מערבוב של כחול וצהוב הוא כהיר."]]}
+{"id": "basic-017", "cat": "basic", "ok": false, "answer": "יש 4 אצבעות ביד אחת.", "steps": 1, "secs": 1.2, "trace": [["model", "יש 4 אצבעות ביד אחת."]]}
+{"id": "basic-018", "cat": "basic", "ok": true, "answer": "2 + 3 = 5", "steps": 1, "secs": 0.7, "trace": [["model", "2 + 3 = 5"]]}
+{"id": "basic-019", "cat": "basic", "ok": true, "answer": "Dog", "steps": 1, "secs": 1.4, "trace": [["model", "Dog"]]}
+{"id": "basic-020", "cat": "basic", "ok": false, "answer": "ראש הממשלה הראשון של מדינת ישראל היה יצחק רבין.", "steps": 1, "secs": 3.2, "trace": [["model", "ראש הממשלה הראשון של מדינת ישראל היה יצחק רבין."]]}
+{"id": "basic-021", "cat": "basic", "ok": false, "answer": "Bierutzar France היא باريس.", "steps": 1, "secs": 3.6, "trace": [["model", "Bierutzar France היא باريس."]]}
+{"id": "basic-022", "cat": "basic", "ok": true, "answer": "60", "steps": 1, "secs": 1.5, "trace": [["model", "60"]]}
+{"id": "basic-023", "cat": "basic", "ok": false, "answer": "מים הם תרכובת כימית המהווה בצורתה הנוזלית בסיס לכל צורות החיים המוכרות, כולל האדם.", "steps": 1, "secs": 5.1, "trace": [["model", "מים הם תרכובת כימית המהווה בצורתה הנוזלית בסיס לכל צורות החיים המוכרות, כולל האדם."]]}
+{"id": "basic-024", "cat": "basic", "ok": false, "answer": "Roma.", "steps": 1, "secs": 3.4, "trace": [["model", "Roma."]]}
+{"id": "basic-025", "cat": "basic", "ok": true, "answer": "שבוע יש שבעה ימים.", "steps": 1, "secs": 1.9, "trace": [["model", "שבוע יש שבעה ימים."]]}
+{"id": "calc-026", "cat": "calc", "ok": true, "answer": "20416728", "steps": 2, "secs": 3.5, "trace": [["model", "TOOL: calc | 3684 * 5542"], ["tool", "calc(3684 * 5542) -> 20416728"], ["model", "ANSWER: 20416728"]]}
+{"id": "calc-027", "cat": "calc", "ok": true, "answer": "8982988", "steps": 2, "secs": 4.1, "trace": [["model", "TOOL: calc | 781900 + 2034 * 4032"], ["tool", "calc(781900 + 2034 * 4032) -> 8982988"], ["model", "ANSWER: 8982988"]]}
+{"id": "calc-028", "cat": "calc", "ok": true, "answer": "10052", "steps": 2, "secs": 4.7, "trace": [["model", "TOOL: calc | 44826 / 31 + 8606"], ["tool", "calc(44826 / 31 + 8606) -> 10052"], ["model", "ANSWER: 10052"]]}
+{"id": "calc-029", "cat": "calc", "ok": true, "answer": "55074488", "steps": 2, "secs": 2.7, "trace": [["model", "TOOL: calc | 6874 * 8012"], ["tool", "calc(6874 * 8012) -> 55074488"], ["model", "ANSWER: 55074488"]]}
+{"id": "calc-030", "cat": "calc", "ok": true, "answer": "14695362", "steps": 2, "secs": 3.5, "trace": [["model", "TOOL: calc | 558946 + (2264 * 6244)"], ["tool", "calc(558946 + (2264 * 6244)) -> 14695362"], ["model", "ANSWER: 14695362"]]}
+{"id": "calc-031", "cat": "calc", "ok": true, "answer": "15839", "steps": 2, "secs": 4.7, "trace": [["model", "TOOL: calc | 115193 / 13 + 6978"], ["tool", "calc(115193 / 13 + 6978) -> 15839"], ["model", "ANSWER: 15839"]]}
+{"id": "longdoc-032", "cat": "longdoc", "ok": true, "answer": "קוד הפריט 'פמוט מאבן' הוא KN-4014.", "steps": 1, "secs": 3.6, "trace": [["model", "קוד הפריט 'פמוט מאבן' הוא KN-4014."]]}
+{"id": "longdoc-033", "cat": "longdoc", "ok": true, "answer": "פריט 113 נמצא על מדף 16.", "steps": 1, "secs": 3.2, "trace": [["model", "פריט 113 נמצא על מדף 16."]]}
+{"id": "longdoc-034", "cat": "longdoc", "ok": true, "answer": "קודו של הפריט 'מגש מנחושת' הוא EU-8876.", "steps": 1, "secs": 3.4, "trace": [["model", "קודו של הפריט 'מגש מנחושת' הוא EU-8876."]]}
+{"id": "longdoc-035", "cat": "longdoc", "ok": false, "answer": "פריט 3.", "steps": 1, "secs": 2.7, "trace": [["model", "פריט 3."]]}
+{"id": "longdoc-036", "cat": "longdoc", "ok": true, "answer": "קוד הפריט 'סולם מכסף' הוא JM-8895.", "steps": 1, "secs": 3.5, "trace": [["model", "קוד הפריט 'סולם מכסף' הוא JM-8895."]]}
+{"id": "longdoc-037", "cat": "longdoc", "ok": true, "answer": "פריט 138: מגש מבמבוק, קוד HS-1854, מדף 17.", "steps": 1, "secs": 4.3, "trace": [["model", "פריט 138: מגש מבמבוק, קוד HS-1854, מדף 17."]]}

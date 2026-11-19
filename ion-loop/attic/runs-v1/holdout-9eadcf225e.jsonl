@@ -1,0 +1,31 @@
+{"id": "web-000", "cat": "web", "ok": false, "answer": "העיר כרמיאל נוסדה ב-1844.", "steps": 1, "secs": 1.4, "trace": [["model", "העיר כרמיאל נוסדה ב-1844."]]}
+{"id": "web-001", "cat": "web", "ok": false, "answer": "הספר \"kosher\" ( kosher ) הוא ספר מוסיקלי שכתבו בתקופת המאה ה-18. הוא חיבר בין ימי 1790 ל-1840.", "steps": 1, "secs": 3.8, "trace": [["model", "הספר \"kosher\" ( kosher ) הוא ספר מוסיקלי שכתבו בתקופת המאה ה-18. הוא חיבר בין ימי 1790 ל-1840."]]}
+{"id": "web-002", "cat": "web", "ok": false, "answer": "הספר מסילת ישרים חיבר אותו ג'ון דה פינס.", "steps": 1, "secs": 1.6, "trace": [["model", "הספר מסילת ישרים חיבר אותו ג'ון דה פינס."]]}
+{"id": "web-003", "cat": "web", "ok": false, "answer": "הרב אברהם יצחק הכהן קוק נולד ב-1826.", "steps": 1, "secs": 1.5, "trace": [["model", "הרב אברהם יצחק הכהן קוק נולד ב-1826."]]}
+{"id": "web-004", "cat": "web", "ok": false, "answer": "קריית שמונה הוקמה ב-1284.", "steps": 1, "secs": 1.4, "trace": [["model", "קריית שמונה הוקמה ב-1284."]]}
+{"id": "web-005", "cat": "web", "ok": false, "answer": "אול טשרניחובסקי נולד ב-1976.", "steps": 1, "secs": 1.4, "trace": [["model", "אול טשרניחובסקי נולד ב-1976."]]}
+{"id": "web-006", "cat": "web", "ok": false, "answer": "אורי צבי גרינברג נולד ב-1976.", "steps": 1, "secs": 1.7, "trace": [["model", "אורי צבי גרינברג נולד ב-1976."]]}
+{"id": "web-007", "cat": "web", "ok": false, "answer": "חיים נחמן ביאליק נולד ב-1946.", "steps": 1, "secs": 1.4, "trace": [["model", "חיים נחמן ביאליק נולד ב-1946."]]}
+{"id": "web-008", "cat": "web", "ok": false, "answer": "הספר \"נפש החיים\" נכתבה על ידי ר' חיים שטייה.", "steps": 1, "secs": 1.6, "trace": [["model", "הספר \"נפש החיים\" נכתבה על ידי ר' חיים שטייה."]]}
+{"id": "multistep-009", "cat": "multistep", "ok": false, "answer": "1948.", "steps": 1, "secs": 0.7, "trace": [["model", "1948."]]}
+{"id": "multistep-010", "cat": "multistep", "ok": false, "answer": "10.", "steps": 1, "secs": 0.5, "trace": [["model", "10."]]}
+{"id": "multistep-011", "cat": "multistep", "ok": false, "answer": "1,000 שנים.", "steps": 1, "secs": 0.9, "trace": [["model", "1,000 שנים."]]}
+{"id": "multistep-012", "cat": "multistep", "ok": false, "answer": "1850.", "steps": 1, "secs": 0.6, "trace": [["model", "1850."]]}
+{"id": "multistep-013", "cat": "multistep", "ok": false, "answer": "12 שנים.", "steps": 1, "secs": 0.5, "trace": [["model", "12 שנים."]]}
+{"id": "multistep-014", "cat": "multistep", "ok": false, "answer": "12 שנים.", "steps": 1, "secs": 0.5, "trace": [["model", "12 שנים."]]}
+{"id": "basic-015", "cat": "basic", "ok": false, "answer": "מצרים נמצאים ביבשת.", "steps": 1, "secs": 1.0, "trace": [["model", "מצרים נמצאים ביבשת."]]}
+{"id": "basic-016", "cat": "basic", "ok": true, "answer": "יום שלישי.", "steps": 1, "secs": 0.4, "trace": [["model", "יום שלישי."]]}
+{"id": "basic-017", "cat": "basic", "ok": true, "answer": "Jerusalem.", "steps": 1, "secs": 0.4, "trace": [["model", "Jerusalem."]]}
+{"id": "basic-018", "cat": "basic", "ok": false, "answer": "יש לעכביש 4 רגליים.", "steps": 1, "secs": 0.8, "trace": [["model", "יש לעכביש 4 רגליים."]]}
+{"id": "basic-019", "cat": "basic", "ok": true, "answer": "12.", "steps": 1, "secs": 0.4, "trace": [["model", "12."]]}
+{"id": "basic-020", "cat": "basic", "ok": false, "answer": "ההפך של המילה 'חם' הוא 'חמה'.", "steps": 1, "secs": 1.2, "trace": [["model", "ההפך של המילה 'חם' הוא 'חמה'."]]}
+{"id": "basic-021", "cat": "basic", "ok": false, "answer": "avesbruary.", "steps": 1, "secs": 0.4, "trace": [["model", "avesbruary."]]}
+{"id": "basic-022", "cat": "basic", "ok": true, "answer": "שמש - sun", "steps": 1, "secs": 0.4, "trace": [["model", "שמש - sun"]]}
+{"id": "calc-023", "cat": "calc", "ok": false, "answer": "7113 כפול 3771 הוא 26,405,893.", "steps": 1, "secs": 2.3, "trace": [["model", "7113 כפול 3771 הוא 26,405,893."]]}
+{"id": "calc-024", "cat": "calc", "ok": false, "answer": "606471 + 5548 * 4111 = 2399999", "steps": 1, "secs": 2.4, "trace": [["model", "606471 + 5548 * 4111 = 2399999"]]}
+{"id": "calc-025", "cat": "calc", "ok": false, "answer": "134045 / 19 + 9661 = 7218.526316", "steps": 1, "secs": 2.9, "trace": [["model", "134045 / 19 + 9661 = 7218.526316"]]}
+{"id": "calc-026", "cat": "calc", "ok": false, "answer": "9676 כפול 5283 הוא 5,104,000.", "steps": 1, "secs": 2.2, "trace": [["model", "9676 כפול 5283 הוא 5,104,000."]]}
+{"id": "longdoc-027", "cat": "longdoc", "ok": true, "answer": "AM-7821", "steps": 1, "secs": 2.5, "trace": [["model", "AM-7821"]]}
+{"id": "longdoc-028", "cat": "longdoc", "ok": true, "answer": "פריט 109: קערה מקש, קוד HS-8338, מדף 35.", "steps": 1, "secs": 4.1, "trace": [["model", "פריט 109: קערה מקש, קוד HS-8338, מדף 35."]]}
+{"id": "longdoc-029", "cat": "longdoc", "ok": true, "answer": "הקוד של הפריט 'שעון מנחושת' הוא ES-5462.", "steps": 1, "secs": 3.6, "trace": [["model", "הקוד של הפריט 'שעון מנחושת' הוא ES-5462."]]}
+{"id": "longdoc-030", "cat": "longdoc", "ok": true, "answer": "פריט 130: קערה מחרס, קוד EQ-6534, מדף 22.", "steps": 1, "secs": 4.1, "trace": [["model", "פריט 130: קערה מחרס, קוד EQ-6534, מדף 22."]]}

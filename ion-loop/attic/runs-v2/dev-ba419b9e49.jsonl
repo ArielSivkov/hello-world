@@ -1,0 +1,38 @@
+{"id": "web-000", "cat": "web", "ok": true, "answer": "1955", "steps": 2, "secs": 5.4, "trace": [["model", "TOOL: calc | 1955"], ["tool", "calc(1955) -> 1955"], ["model", "ANSWER: 1955"]]}
+{"id": "web-001", "cat": "web", "ok": true, "answer": "1910", "steps": 1, "secs": 4.4, "trace": [["model", "1910"]]}
+{"id": "web-002", "cat": "web", "ok": true, "answer": "1956", "steps": 2, "secs": 5.4, "trace": [["model", "TOOL: calc | 1956"], ["tool", "calc(1956) -> 1956"], ["model", "ANSWER: 1956"]]}
+{"id": "web-003", "cat": "web", "ok": true, "answer": "1929", "steps": 1, "secs": 4.1, "trace": [["model", "1929"]]}
+{"id": "web-004", "cat": "web", "ok": false, "answer": "1973", "steps": 2, "secs": 6.1, "trace": [["model", "TOOL: calc | 1886 - 1973"], ["tool", "calc(1886 - 1973) -> -87"], ["model", "ANSWER: 1973"]]}
+{"id": "web-005", "cat": "web", "ok": true, "answer": "1970 - 1966 = 4", "steps": 2, "secs": 6.5, "trace": [["model", "TOOL: calc | 1970 - 1966"], ["tool", "calc(1970 - 1966) -> 4"], ["model", "ANSWER: 1970 - 1966 = 4"]]}
+{"id": "web-006", "cat": "web", "ok": true, "answer": "1890", "steps": 2, "secs": 5.3, "trace": [["model", "TOOL: calc | 1890"], ["tool", "calc(1890) -> 1890"], ["model", "ANSWER: 1890"]]}
+{"id": "web-007", "cat": "web", "ok": true, "answer": "1911", "steps": 1, "secs": 4.0, "trace": [["model", "1911"]]}
+{"id": "multistep-008", "cat": "multistep", "ok": false, "answer": "0", "steps": 2, "secs": 5.6, "trace": [["model", "TOOL: calc | 1948 - 1949"], ["tool", "calc(1948 - 1949) -> -1"], ["model", "ANSWER: 0"]]}
+{"id": "multistep-009", "cat": "multistep", "ok": false, "answer": "39", "steps": 2, "secs": 6.3, "trace": [["model", "TOOL: calc | 1970 - 1931"], ["tool", "calc(1970 - 1931) -> 39"], ["model", "ANSWER: 39"]]}
+{"id": "multistep-010", "cat": "multistep", "ok": false, "answer": "61", "steps": 2, "secs": 6.4, "trace": [["model", "TOOL: calc | 1934 - 1873"], ["tool", "calc(1934 - 1873) -> 61"], ["model", "ANSWER: 61"]]}
+{"id": "multistep-011", "cat": "multistep", "ok": false, "answer": "22 years", "steps": 2, "secs": 5.9, "trace": [["model", "TOOL: calc | 1986 - 1964"], ["tool", "calc(1986 - 1964) -> 22"], ["model", "22 years"]]}
+{"id": "multistep-012", "cat": "multistep", "ok": true, "answer": "6 years", "steps": 2, "secs": 5.9, "trace": [["model", "TOOL: calc | 1955 - 1949"], ["tool", "calc(1955 - 1949) -> 6"], ["model", "ANSWER: 6 years"]]}
+{"id": "multistep-013", "cat": "multistep", "ok": false, "answer": "27 years", "steps": 2, "secs": 6.6, "trace": [["model", "TOOL: calc | 1970 - 1943"], ["tool", "calc(1970 - 1943) -> 27"], ["model", "ANSWER: 27 years"]]}
+{"id": "basic-014", "cat": "basic", "ok": true, "answer": "The word \"בית\" translates to \"house\" in English.", "steps": 1, "secs": 4.8, "trace": [["model", "The word \"בית\" translates to \"house\" in English."]]}
+{"id": "basic-015", "cat": "basic", "ok": false, "answer": "75", "steps": 2, "secs": 6.0, "trace": [["model", "TOOL: calc | 75"], ["tool", "calc(75) -> 75"], ["model", "ANSWER: 75"]]}
+{"id": "basic-016", "cat": "basic", "ok": false, "answer": "צהוב", "steps": 2, "secs": 5.7, "trace": [["model", "TOOL: calc | 505 + 530"], ["tool", "calc(505 + 530) -> 1035"], ["model", "ANSWER: צהוב"]]}
+{"id": "basic-017", "cat": "basic", "ok": true, "answer": "ביד אחת יש 5 אצבעות.", "steps": 1, "secs": 4.0, "trace": [["model", "ביד אחת יש 5 אצבעות."]]}
+{"id": "basic-018", "cat": "basic", "ok": true, "answer": "5", "steps": 2, "secs": 5.6, "trace": [["model", "TOOL: calc | 2 + 3"], ["tool", "calc(2 + 3) -> 5"], ["model", "ANSWER: 5"]]}
+{"id": "basic-019", "cat": "basic", "ok": true, "answer": "DOG", "steps": 1, "secs": 3.3, "trace": [["model", "DOG"]]}
+{"id": "basic-020", "cat": "basic", "ok": false, "answer": "ראש הממשלה הראשון של מדינת ישראל היה יצחק רבין.", "steps": 1, "secs": 4.2, "trace": [["model", "ראש הממשלה הראשון של מדינת ישראל היה יצחק רבין."]]}
+{"id": "basic-021", "cat": "basic", "ok": true, "answer": "ביתן צרפת הוא ביתן של צרפת, בנוי בסגנון של רחוב אופייני בפריז.", "steps": 1, "secs": 5.2, "trace": [["model", "ביתן צרפת הוא ביתן של צרפת, בנוי בסגנון של רחוב אופייני בפריז."]]}
+{"id": "basic-022", "cat": "basic", "ok": false, "answer": "", "steps": 4, "secs": 12.9, "trace": [["model", "TOOL: calc | 60"], ["tool", "calc(60) -> 60"], ["model", "TOOL: calc | 60 * 3,600 | ANSWER: 216,000"], ["tool", "calc(60 * 3,600 | ANSWER: 216,000) -> error: invalid syntax (<unknown>, line 1)"], ["model", "TOOL: calc | 60 * 3,600 | ANSWER: 216,000"], ["tool", "calc(60 * 3,600 | ANSWER: 216,000) -> you already have this result. Give the final answer now: ANSWER: ..."], ["model", "TOOL: calc | 60 * 3,600 | ANSWER: 216,000"], ["tool", "calc(60 * 3,600 | ANSWER: 216,000) -> you already have this result. Give the final answer now: ANSWER: ..."]]}
+{"id": "basic-023", "cat": "basic", "ok": false, "answer": "unknown", "steps": 2, "secs": 5.4, "trace": [["model", "TOOL: calc | 30% * 100 = 30"], ["tool", "calc(30% * 100 = 30) -> error: invalid syntax (<unknown>, line 1)"], ["model", "ANSWER: unknown"]]}
+{"id": "basic-024", "cat": "basic", "ok": false, "answer": "אוניברסיטה העברית בירושלים", "steps": 2, "secs": 5.3, "trace": [["model", "TOOL: calc | 1977"], ["tool", "calc(1977) -> 1977"], ["model", "ANSWER: אוניברסיטה העברית בירושלים"]]}
+{"id": "basic-025", "cat": "basic", "ok": true, "answer": "שבוע יש שבעה ימים.", "steps": 1, "secs": 3.5, "trace": [["model", "שבוע יש שבעה ימים."]]}
+{"id": "calc-026", "cat": "calc", "ok": true, "answer": "20416728", "steps": 2, "secs": 7.2, "trace": [["model", "TOOL: calc | 3684 * 5542"], ["tool", "calc(3684 * 5542) -> 20416728"], ["model", "ANSWER: 20416728"]]}
+{"id": "calc-027", "cat": "calc", "ok": true, "answer": "8982988", "steps": 2, "secs": 6.5, "trace": [["model", "TOOL: calc | 781900 + (2034 * 4032)"], ["tool", "calc(781900 + (2034 * 4032)) -> 8982988"], ["model", "ANSWER: 8982988"]]}
+{"id": "calc-028", "cat": "calc", "ok": true, "answer": "10052", "steps": 2, "secs": 5.1, "trace": [["model", "TOOL: calc | 44826 / 31 + 8606"], ["tool", "calc(44826 / 31 + 8606) -> 10052"], ["model", "ANSWER: 10052"]]}
+{"id": "calc-029", "cat": "calc", "ok": true, "answer": "55074488", "steps": 2, "secs": 6.6, "trace": [["model", "TOOL: calc | 6874 * 8012"], ["tool", "calc(6874 * 8012) -> 55074488"], ["model", "ANSWER: 55074488"]]}
+{"id": "calc-030", "cat": "calc", "ok": true, "answer": "14695362", "steps": 2, "secs": 7.1, "trace": [["model", "TOOL: calc | 558946 + 2264 * 6244"], ["tool", "calc(558946 + 2264 * 6244) -> 14695362"], ["model", "ANSWER: 14695362"]]}
+{"id": "calc-031", "cat": "calc", "ok": true, "answer": "15839", "steps": 2, "secs": 5.2, "trace": [["model", "TOOL: calc | 115193 / 13 + 6978"], ["tool", "calc(115193 / 13 + 6978) -> 15839"], ["model", "ANSWER: 15839"]]}
+{"id": "longdoc-032", "cat": "longdoc", "ok": true, "answer": "KN-4014", "steps": 1, "secs": 2.9, "trace": [["model", "KN-4014"]]}
+{"id": "longdoc-033", "cat": "longdoc", "ok": true, "answer": "מדף 16", "steps": 1, "secs": 3.0, "trace": [["model", "מדף 16"]]}
+{"id": "longdoc-034", "cat": "longdoc", "ok": true, "answer": "EU-8876", "steps": 2, "secs": 4.3, "trace": [["model", "TOOL: calc | 8876"], ["tool", "calc(8876) -> 8876"], ["model", "ANSWER: EU-8876"]]}
+{"id": "longdoc-035", "cat": "longdoc", "ok": true, "answer": "מדף 32", "steps": 1, "secs": 2.9, "trace": [["model", "מדף 32"]]}
+{"id": "longdoc-036", "cat": "longdoc", "ok": false, "answer": "-8781", "steps": 2, "secs": 5.0, "trace": [["model", "TOOL: calc | 114-8895"], ["tool", "calc(114-8895) -> -8781"], ["model", "ANSWER: -8781"]]}
+{"id": "longdoc-037", "cat": "longdoc", "ok": true, "answer": "מדף 17", "steps": 1, "secs": 3.8, "trace": [["model", "מדף 17"]]}
