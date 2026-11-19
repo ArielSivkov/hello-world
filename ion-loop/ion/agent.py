@@ -148,6 +148,8 @@ def _words(s):
 
 def grounded(answer, notes, question):
     """An answer drawn from the notes must literally be in them: at least half of its new content words."""
+    if len(answer.split()) > 12:      # a wholesale copy of the note is not an answer
+        return False
     new = _words(answer) - _words(question)
     return bool(new) and sum(w in notes.lower() for w in new) >= len(new) / 2
 
