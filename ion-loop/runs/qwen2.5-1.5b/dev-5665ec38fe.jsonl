@@ -1,0 +1,11 @@
+{"id": "web-000", "cat": "web", "ok": false, "answer": "העיר דימונה נוסדה ב-1948.", "steps": 1, "secs": 1.8, "trace": [["model", "העיר דימונה נוסדה ב-1948."]]}
+{"id": "web-001", "cat": "web", "ok": false, "answer": "נתן אלתרמן נולד ב-1928.", "steps": 1, "secs": 1.8, "trace": [["model", "נתן אלתרמן נולד ב-1928."]]}
+{"id": "web-002", "cat": "web", "ok": false, "answer": "העיר אשדוד הוקמה ב-1874.", "steps": 1, "secs": 1.9, "trace": [["model", "העיר אשדוד הוקמה ב-1874."]]}
+{"id": "web-003", "cat": "web", "ok": false, "answer": "נתניה נוסדה ב-1948.", "steps": 1, "secs": 1.5, "trace": [["model", "נתניה נוסדה ב-1948."]]}
+{"id": "web-004", "cat": "web", "ok": false, "answer": "דוד בן-גוריון נולד ב-1785.", "steps": 1, "secs": 2.0, "trace": [["model", "דוד בן-גוריון נולד ב-1785."]]}
+{"id": "web-005", "cat": "web", "ok": false, "answer": "שמואל יוסף עגנון נפטר ב-1978.", "steps": 1, "secs": 2.0, "trace": [["model", "שמואל יוסף עגנון נפטר ב-1978."]]}
+{"id": "web-006", "cat": "web", "ok": false, "answer": "רחל המשוררת נולדה ב-1946.", "steps": 1, "secs": 1.8, "trace": [["model", "רחל המשוררת נולדה ב-1946."]]}
+{"id": "web-007", "cat": "web", "ok": false, "answer": "אה גולדברג נולדה ב-1946.", "steps": 1, "secs": 1.8, "trace": [["model", "אה גולדברג נולדה ב-1946."]]}
+{"id": "multistep-008", "cat": "multistep", "ok": false, "answer": "12 שנים.", "steps": 1, "secs": 0.6, "trace": [["model", "12 שנים."]]}
+{"id": "multistep-009", "cat": "multistep", "ok": false, "answer": "1987.", "steps": 1, "secs": 0.8, "trace": [["model", "1987."]]}
+{"id": "multistep-010", "cat": "multistep", "ok": false, "answer": "15.", "steps": 1, "secs": 0.6, "trace": [["model", "15."]]}

@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, field, asdict
 
 from . import llm
-from .tools import TOOLS, reference_notes
+from .tools import TOOLS, reference_hits, reference_notes
 
 BASE_PROMPT = "You are Small ion, a helpful assistant. Answer in Hebrew, as briefly as possible."
 
@@ -43,6 +43,7 @@ class Config:
     auto_rag: bool = False    # retrieve passages for the question up front instead of inlining the head
     auto_web: bool = False    # harness looks the question up and attaches reference notes
     tool_guard: bool = False  # offer calc only when the question itself contains big numbers
+    decompose: str = ""       # "llm": the model splits the question; "entities": the harness splits by retrieved articles
     temperature: float = 0.0
 
     def key(self):
@@ -71,21 +72,19 @@ def _nums(s):
     return set(re.findall(r"\d+", s.replace(",", "")))
 
 
-def run(question, cfg, doc=None):
-    """Returns (answer, trace)."""
+def _solve(question, cfg, doc=None, notes=None, force_tools=None):
+    """One agent episode. Returns (answer, trace)."""
     user = question
     if doc and cfg.auto_rag:
         user = (f"Relevant passages from a long document:\n{TOOLS['doc_search'][0](question, {'doc': doc})}"
                 f"\n\nQuestion: {question}")
     elif doc:
         user = f"Document:\n{doc[:cfg.doc_chars]}\n\nQuestion: {question}"
-    if cfg.auto_web and not doc:
-        notes = reference_notes(question)
-        if notes:
-            user = (f"Reference notes from an encyclopedia (they may be irrelevant; ignore them if they do not help):\n"
-                    f"{notes}\n\nQuestion: {question}")
-    tools = list(cfg.tools)
-    if cfg.tool_guard and "calc" in tools and len(re.findall(r"\d{3,}", question)) < 2:
+    if notes:
+        user = (f"Reference notes from an encyclopedia (they may be irrelevant; ignore them if they do not help):\n"
+                f"{notes}\n\nQuestion: {question}")
+    tools = list(cfg.tools) if force_tools is None else list(force_tools)
+    if force_tools is None and cfg.tool_guard and "calc" in tools and len(re.findall(r"\d{3,}", question)) < 2:
         tools.remove("calc")
     msgs = [{"role": "system", "content": _system(cfg, bool(doc), tools)},
             {"role": "user", "content": user}]
@@ -128,3 +127,77 @@ def run(question, cfg, doc=None):
                 continue
         return ans, trace
     return "", trace
+
+
+DECOMPOSE = """Some questions need two separate facts, for example comparing two people or two places.
+If so, write the two simple questions, one per line, in Hebrew. If the question is already simple, reply exactly: NONE
+Examples:
+Q: בכמה שנים מבוגר משה מאהרן?
+באיזו שנה נולד משה?
+באיזו שנה נולד אהרן?
+Q: כמה שנים עברו בין ייסוד חיפה לייסוד עכו?
+באיזו שנה נוסדה חיפה?
+באיזו שנה נוסדה עכו?
+Q: מהי בירת ספרד?
+NONE"""
+
+
+def _words(s):
+    return {w for w in re.findall(r"[^\W_]+", s.lower()) if len(w) >= 4 or w.isdigit()}
+
+
+def grounded(answer, notes, question):
+    """An answer drawn from the notes must literally be in them: at least half of its new content words."""
+    new = _words(answer) - _words(question)
+    return bool(new) and sum(w in notes.lower() for w in new) >= len(new) / 2
+
+
+def _lookup(question, cfg):
+    """Answer directly, and again with retrieved notes; trust the notes-based answer only if it is grounded."""
+    notes = reference_notes(question) if cfg.auto_web else ""
+    a0, t0 = _solve(question, cfg)
+    if not notes:
+        return a0, t0
+    a1, t1 = _solve(question, cfg, notes=notes)
+    ok = grounded(a1, notes, question)
+    return (a1 if ok else a0), t0 + [("notes", notes[:300])] + t1 + [("grounded", str(ok))]
+
+
+def _combine(question, facts, cfg, trace):
+    final = "Known facts:\n" + "\n".join(facts) + f"\n\nUsing these facts, answer: {question}"
+    a, t = _solve(final, cfg, force_tools=[x for x in cfg.tools if x == "calc"])
+    return a, trace + [("facts", "\n".join(facts))] + t
+
+
+def run(question, cfg, doc=None):
+    """Returns (answer, trace)."""
+    if doc:
+        return _solve(question, cfg, doc=doc)
+    if cfg.decompose == "llm":
+        try:
+            out = llm.chat([{"role": "system", "content": DECOMPOSE},
+                            {"role": "user", "content": "Q: " + question}], max_tokens=80)
+        except RuntimeError:
+            out = "NONE"
+        subs = [l.strip() for l in out.splitlines() if l.strip().endswith("?")][:2]
+        if len(subs) == 2 and "NONE" not in out:
+            trace, facts = [("plan", out)], []
+            for q in subs:
+                a, t = _lookup(q, cfg)
+                facts.append(f"- {q} {a}")
+                trace += t
+            return _combine(question, facts, cfg, trace)
+    if cfg.decompose == "entities" and cfg.auto_web:
+        hits = reference_hits(question)
+        tw = [set(re.findall(r"[^\W_]+", h["title"])) for h in hits]
+        # two different things are named in the question → one fact from each, then combine
+        if len(hits) == 2 and not (tw[0] & tw[1]):
+            trace, facts = [("plan", "entities: " + " | ".join(h["title"] for h in hits))], []
+            for h in hits:
+                a, t = _solve(f"Note about {h['title']}: {h['text']}\n\nWhich single fact about {h['title']} from this "
+                              f"note is needed for the question: {question}\nReply with that fact only "
+                              f"(for example just a year).", Config())
+                facts.append(f"- {h['title']}: {a[:80]}")
+                trace += t
+            return _combine(question, facts, cfg, trace)
+    return _lookup(question, cfg)

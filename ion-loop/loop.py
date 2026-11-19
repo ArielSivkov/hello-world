@@ -17,10 +17,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 from ion.agent import Config          # noqa: E402
-from arena.run import evaluate        # noqa: E402
+from arena.run import evaluate, TAG   # noqa: E402
 
 TOLERANCE = 10      # allows one basic task (8 points) to flip; larger drops reject the change
-HISTORY = os.path.join(os.path.dirname(__file__), "history.jsonl")
+HISTORY = os.path.join(os.path.dirname(__file__), f"history-{TAG}.jsonl")
 
 
 def add_tool(name):
@@ -49,6 +49,8 @@ CANDIDATES = [
      lambda c: "calc" not in c.tools),
     ("reflex:web_notes", ["web", "multistep"], setattr_("auto_web", True), lambda c: True),
     ("tool:web_search", ["web", "multistep"], add_tool("web_search"), lambda c: not c.auto_web),
+    ("loop:decompose-llm", ["multistep"], setattr_("decompose", "llm"), lambda c: c.auto_web and not c.decompose),
+    ("loop:decompose-entities", ["multistep"], setattr_("decompose", "entities"), lambda c: c.auto_web and not c.decompose),
     ("rag:auto", ["longdoc"], setattr_("auto_rag", True), lambda c: True),
     ("tool:doc_search", ["longdoc"], add_tool("doc_search"), lambda c: not c.auto_rag),
     ("prompt:fewshot", ["calc", "web", "multistep", "longdoc"], setattr_("fewshot", True), lambda c: bool(c.tools)),
@@ -103,7 +105,7 @@ def main():
     hb = evaluate(Config(), "holdout")
     hf = evaluate(cfg, "holdout")
     log({"event": "holdout", "baseline": hb, "final": hf})
-    json.dump(cfg.__dict__, open(os.path.join(os.path.dirname(__file__), "champion.json"), "w"), indent=1)
+    json.dump(cfg.__dict__, open(os.path.join(os.path.dirname(__file__), f"champion-{TAG}.json"), "w"), indent=1)
 
 
 if __name__ == "__main__":

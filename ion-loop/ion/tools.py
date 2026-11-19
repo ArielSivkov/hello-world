@@ -139,13 +139,16 @@ def _offline(query, n=3, sizes=(600, 200, 200), strict=False):
     return [{"title": t, "text": x[:sizes[min(k, len(sizes) - 1)]]} for k, (t, (_, x)) in enumerate(top)]
 
 
-def reference_notes(question):
-    """Harness-driven retrieval: look the question up without asking the model to call a tool."""
+def reference_hits(question):
+    """Harness-driven retrieval: articles whose title is named in the question."""
     try:
-        hits = _offline(question, n=2, sizes=(450, 450), strict=True)
+        return _offline(question, n=2, sizes=(450, 450), strict=True)
     except Exception:
-        return ""
-    return "\n".join(f"[{h['title']}] {h['text']}" for h in hits)
+        return []
+
+
+def reference_notes(question):
+    return "\n".join(f"[{h['title']}] {h['text']}" for h in reference_hits(question))
 
 
 def web_search(query, ctx=None):

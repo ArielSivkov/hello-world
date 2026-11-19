@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 from ion.agent import Config, run          # noqa: E402
 from arena.check import correct            # noqa: E402
 
-RUNS = os.path.join(HERE, "..", "runs")
+TAG = os.environ.get("ION_TAG", "qwen2.5-1.5b")     # which model the server is running
+RUNS = os.path.join(HERE, "..", "runs", TAG)
 
 
 def load(split):
