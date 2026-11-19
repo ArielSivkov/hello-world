@@ -3,3 +3,5 @@ __pycache__/
 data/
 loop.log
 runs/
+history-*.jsonl
+champion-*.json

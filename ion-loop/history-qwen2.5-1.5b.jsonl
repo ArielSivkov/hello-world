@@ -1,4 +1,0 @@
-{"event": "baseline", "score": {"total": 16.6, "cats": {"basic": 83, "calc": 0, "longdoc": 0, "multistep": 0, "web": 0}, "run": "5665ec38fe", "avg_steps": 1.0}, "t": "2026-11-19 17:32:34"}
-{"event": "candidate", "name": "tool:calc", "target": "calc", "before": 16.6, "after": 33.4, "cats": {"basic": 67, "calc": 100, "longdoc": 0, "multistep": 0, "web": 0}, "regressions": {"basic": [83, 67]}, "avg_steps": 1.95, "kept": false, "t": "2026-11-19 17:32:34"}
-{"event": "candidate", "name": "tool:calc+guard", "target": "calc", "before": 16.6, "after": 36.6, "cats": {"basic": 83, "calc": 100, "longdoc": 0, "multistep": 0, "web": 0}, "regressions": {}, "avg_steps": 1.16, "kept": true, "t": "2026-11-19 17:32:34"}
-{"event": "candidate", "name": "rag:auto", "target": "longdoc", "before": 36.6, "after": 53.2, "cats": {"basic": 83, "calc": 100, "longdoc": 83, "multistep": 0, "web": 0}, "regressions": {}, "avg_steps": 1.16, "kept": true, "t": "2026-11-19 17:32:34"}
