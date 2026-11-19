@@ -1,0 +1,15 @@
+{
+ "tools": [
+  "calc"
+ ],
+ "fewshot": true,
+ "plan": false,
+ "verify": false,
+ "max_steps": 4,
+ "doc_chars": 2500,
+ "auto_rag": true,
+ "auto_web": true,
+ "tool_guard": false,
+ "decompose": "entities",
+ "temperature": 0.0
+}
