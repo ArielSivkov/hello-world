@@ -1,0 +1,30 @@
+{
+ "tools": [
+  "calc"
+ ],
+ "fewshot": true,
+ "plan": false,
+ "verify": false,
+ "max_steps": 4,
+ "doc_chars": 2500,
+ "auto_rag": true,
+ "auto_web": true,
+ "tool_guard": true,
+ "decompose": "entities-facts",
+ "temperature": 0.0,
+ "notes_facts": true,
+ "notes_chars": 450,
+ "notes_n": 2,
+ "calc_on_notes": true,
+ "rag_k": 3,
+ "rag_neighbors": 0,
+ "sys_hebrew": false,
+ "brief": false,
+ "extract_hebrew": false,
+ "extract": "structured",
+ "combine_hint": false,
+ "combine_name": true,
+ "notes_dated_only": false,
+ "notes_facts_only": false,
+ "rag_phrase": true
+}
