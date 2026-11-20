@@ -3,9 +3,10 @@ import re
 from dataclasses import dataclass, field, asdict
 
 from . import llm
-from .tools import TOOLS, reference_hits, reference_notes
+from .tools import TOOLS, reference_hits, format_notes
 
 BASE_PROMPT = "You are Small ion, a helpful assistant. Answer in Hebrew, as briefly as possible."
+BASE_PROMPT_HE = "אתה Small ion, עוזר מועיל. ענה בעברית ובקיצור רב ככל האפשר."
 
 TOOL_PROMPT = """You may use tools, but only when needed. If you already know the answer, just answer directly in Hebrew.
 To call a tool reply with exactly one line:
@@ -45,13 +46,23 @@ class Config:
     tool_guard: bool = False  # offer calc only when the question itself contains big numbers
     decompose: str = ""       # "llm": the model splits the question; "entities": the harness splits by retrieved articles
     temperature: float = 0.0
+    # --- cycle 2 knobs ---
+    notes_facts: bool = False     # prepend structured dates (born / died / founded) to each note
+    notes_chars: int = 450
+    notes_n: int = 2
+    calc_on_notes: bool = False   # "how many"-type question + notes holding 2+ years → offer calc
+    rag_k: int = 3
+    rag_neighbors: int = 1
+    sys_hebrew: bool = False
+    brief: bool = False
+    extract_hebrew: bool = False
 
     def key(self):
         return repr(sorted(asdict(self).items()))
 
 
 def _system(cfg, has_doc, tools):
-    parts = [BASE_PROMPT]
+    parts = [BASE_PROMPT_HE if cfg.sys_hebrew else BASE_PROMPT]
     if tools:
         parts.append(TOOL_PROMPT.format(tools="\n".join("- " + TOOLS[t][1] for t in tools)))
         if cfg.plan:
@@ -76,13 +87,16 @@ def _solve(question, cfg, doc=None, notes=None, force_tools=None):
     """One agent episode. Returns (answer, trace)."""
     user = question
     if doc and cfg.auto_rag:
-        user = (f"Relevant passages from a long document:\n{TOOLS['doc_search'][0](question, {'doc': doc})}"
+        rctx = {"doc": doc, "rag_k": cfg.rag_k, "rag_neighbors": cfg.rag_neighbors}
+        user = (f"Relevant passages from a long document:\n{TOOLS['doc_search'][0](question, rctx)}"
                 f"\n\nQuestion: {question}")
     elif doc:
         user = f"Document:\n{doc[:cfg.doc_chars]}\n\nQuestion: {question}"
     if notes:
         user = (f"Reference notes from an encyclopedia (they may be irrelevant; ignore them if they do not help):\n"
                 f"{notes}\n\nQuestion: {question}")
+    if cfg.brief:
+        user += "\nענה במילה אחת או במספר בלבד."
     tools = list(cfg.tools) if force_tools is None else list(force_tools)
     if force_tools is None and cfg.tool_guard and "calc" in tools and len(re.findall(r"\d{3,}", question)) < 2:
         tools.remove("calc")
@@ -156,12 +170,17 @@ def grounded(answer, notes, question):
 
 def _lookup(question, cfg):
     """Answer directly, and again with retrieved notes; trust the notes-based answer only if it is grounded."""
-    notes = reference_notes(question) if cfg.auto_web else ""
+    hits = reference_hits(question, cfg.notes_chars, cfg.notes_n) if cfg.auto_web else []
+    notes = format_notes(hits, cfg.notes_facts)
     a0, t0 = _solve(question, cfg)
     if not notes:
         return a0, t0
-    a1, t1 = _solve(question, cfg, notes=notes)
-    ok = grounded(a1, notes, question)
+    force = None
+    if (cfg.calc_on_notes and "calc" in cfg.tools and re.search(r"כמה|הפרש", question)
+            and len(set(re.findall(r"\b1[5-9]\d\d\b|\b20[012]\d\b", notes))) >= 2):
+        force = ["calc"]
+    a1, t1 = _solve(question, cfg, notes=notes, force_tools=force)
+    ok = grounded(a1, notes + " " + " ".join(v for k, v in t1 if k == "tool"), question)   # tool output is evidence too
     return (a1 if ok else a0), t0 + [("notes", notes[:300])] + t1 + [("grounded", str(ok))]
 
 
@@ -189,16 +208,25 @@ def run(question, cfg, doc=None):
                 facts.append(f"- {q} {a}")
                 trace += t
             return _combine(question, facts, cfg, trace)
-    if cfg.decompose == "entities" and cfg.auto_web:
-        hits = reference_hits(question)
+    if cfg.decompose in ("entities", "entities-dated") and cfg.auto_web:
+        hits = reference_hits(question, cfg.notes_chars)
         tw = [set(re.findall(r"[^\W_]+", h["title"])) for h in hits]
+        dated = cfg.decompose == "entities" or (
+            all(re.search(r"\b1[5-9]\d\d\b|\b20[012]\d\b", h["text"][:300]) for h in hits)
+            and not re.search(r"\d{2,}", question))
         # two different things are named in the question → one fact from each, then combine
-        if len(hits) == 2 and not (tw[0] & tw[1]):
+        if len(hits) == 2 and not (tw[0] & tw[1]) and dated:
             trace, facts = [("plan", "entities: " + " | ".join(h["title"] for h in hits))], []
             for h in hits:
-                a, t = _solve(f"Note about {h['title']}: {h['text']}\n\nWhich single fact about {h['title']} from this "
-                              f"note is needed for the question: {question}\nReply with that fact only "
-                              f"(for example just a year).", Config())
+                note = format_notes([h], cfg.notes_facts)
+                if cfg.extract_hebrew:
+                    ask = (f"מידע: {note}\n\nהשאלה הכללית: {question}\nאיזו עובדה אחת על {h['title']} "
+                           f"נדרשת כדי לענות עליה? ענה רק בעובדה עצמה (למשל שנה בלבד).")
+                else:
+                    ask = (f"Note about {note}\n\nWhich single fact about {h['title']} from this "
+                           f"note is needed for the question: {question}\nReply with that fact only "
+                           f"(for example just a year).")
+                a, t = _solve(ask, Config())
                 facts.append(f"- {h['title']}: {a[:80]}")
                 trace += t
             return _combine(question, facts, cfg, trace)

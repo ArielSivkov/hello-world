@@ -140,16 +140,40 @@ def _offline(query, n=3, sizes=(600, 200, 200), strict=False):
     return [{"title": t, "text": x[:sizes[min(k, len(sizes) - 1)]]} for k, (t, (_, x)) in enumerate(top)]
 
 
-def reference_hits(question):
+_LIFE = re.compile(r"\(([^()]*?\b(1[5-9]\d\d)\b[^()]*?[–-][^()]*?\b(1[89]\d\d|20[012]\d)\b[^()]*?)\)")
+_FOUND = re.compile(r"(?:נוסד[הו]?|הוקמה|הוקם)(?: על ידי [^.,]{0,40}?)? (?:בשנת |ב-|ב־)(1[89]\d\d|20[012]\d)")
+
+
+def key_facts(text):
+    """Structured dates parsed from an article lead — easier for a small model than prose."""
+    out = []
+    m = _LIFE.search(text[:260])
+    if m and int(m.group(3)) > int(m.group(2)):
+        out += [f"שנת לידה: {m.group(2)}", f"שנת פטירה: {m.group(3)}"]
+    f = _FOUND.search(text)
+    if f and not m:
+        out.append(f"שנת ייסוד: {f.group(1)}")
+    return "; ".join(out)
+
+
+def reference_hits(question, chars=450, n=2):
     """Harness-driven retrieval: articles whose title is named in the question."""
     try:
-        return _offline(question, n=2, sizes=(450, 450), strict=True)
+        return _offline(question, n=n, sizes=(chars, chars), strict=True)
     except Exception:
         return []
 
 
+def format_notes(hits, facts=False):
+    out = []
+    for h in hits:
+        kf = key_facts(h["text"]) if facts else ""
+        out.append(f"[{h['title']}] " + (f"({kf}) " if kf else "") + h["text"])
+    return "\n".join(out)
+
+
 def reference_notes(question):
-    return "\n".join(f"[{h['title']}] {h['text']}" for h in reference_hits(question))
+    return format_notes(reference_hits(question))
 
 
 def web_search(query, ctx=None):
@@ -196,10 +220,11 @@ def doc_search(query, ctx=None):
         return "no document attached"
     lines = [l for l in doc.split("\n") if l.strip()]
     q = _toks(query)
-    ranked = sorted(range(len(lines)), key=lambda i: (-len(q & _toks(lines[i])), i))[:3]
+    k, nb = (ctx or {}).get("rag_k", 3), (ctx or {}).get("rag_neighbors", 1)
+    ranked = sorted(range(len(lines)), key=lambda i: (-len(q & _toks(lines[i])), i))[:k]
     out = []
     for i in ranked:
-        out.append("\n".join(lines[max(0, i - 1):i + 2]))
+        out.append("\n".join(lines[max(0, i - nb):i + nb + 1]))
     return "\n...\n".join(out)
 
 
