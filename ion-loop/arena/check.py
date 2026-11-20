@@ -16,4 +16,6 @@ def correct(task, answer):
         nums = set(re.findall(r"\d+", re.sub(r"(?<=\d),(?=\d)", "", answer)))
         return any(a in nums for a in task["answers"])
     a = norm(answer)
+    if any(norm(x) in a for x in task.get("reject", [])):     # naming both options is not an answer
+        return False
     return any(norm(x) in a for x in task["answers"])

@@ -4,4 +4,5 @@ data/
 loop*.log
 runs/
 history-*.jsonl
+cycle*-*.jsonl
 champion-*.json

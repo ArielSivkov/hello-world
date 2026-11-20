@@ -34,7 +34,7 @@ def evaluate(cfg: Config, split="dev", verbose=True):
                 continue
             t0 = time.time()
             ans, trace = run(t["q"], cfg, doc=t.get("doc"))
-            r = {"id": t["id"], "cat": t["cat"], "ok": correct(t, ans), "answer": ans,
+            r = {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "ok": correct(t, ans), "answer": ans,
                  "steps": sum(1 for k, _ in trace if k == "model"),
                  "secs": round(time.time() - t0, 1), "trace": trace}
             done[t["id"]] = r
@@ -45,8 +45,12 @@ def evaluate(cfg: Config, split="dev", verbose=True):
     for r in done.values():
         by[r["cat"]].append(r["ok"])
     cats = {c: round(100 * sum(v) / len(v)) for c, v in sorted(by.items())}
+    kinds = defaultdict(list)
+    for r in done.values():
+        kinds[r.get("kind", r["cat"])].append(r["ok"])
+    kinds = {k: f"{sum(v)}/{len(v)}" for k, v in sorted(kinds.items())}
     total = round(sum(cats.values()) / len(cats), 1)      # macro average over categories
-    return {"total": total, "cats": cats, "run": h,
+    return {"total": total, "cats": cats, "kinds": kinds, "run": h,
             "avg_steps": round(sum(r["steps"] for r in done.values()) / len(done), 2)}
 
 
