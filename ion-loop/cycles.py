@@ -51,4 +51,17 @@ CYCLES = {
         ("prompt:brief-answer", ["basic", "web"], set_("brief", True), ANY),
         ("extract:hebrew-prompt", ["multistep"], set_("extract_hebrew", True), lambda c: bool(c.decompose)),
     ],
+    # Cycle 3 — decisions from cycle 2 (see JOURNAL.md)
+    3: [
+        ("decompose:require-structured-facts", ["web", "multistep"], set_("decompose", "entities-facts"), ANY),
+        ("extract:structured", ["multistep"], set_("extract", "structured"), lambda c: c.extract == "llm"),
+        ("extract:facts-only", ["multistep"], set_("extract", "facts-only"), lambda c: c.extract == "llm"),
+        ("combine:larger-minus-smaller", ["multistep"], set_("combine_hint", True), ANY),
+        ("combine:copy-name", ["multistep"], set_("combine_name", True), ANY),
+        ("notes:only-dated-articles", ["basic"], set_("notes_dated_only", True), ANY),
+        ("notes:facts-line-only", ["web"], set_("notes_facts_only", True), ANY),
+        ("rag:exact-phrase-first", ["longdoc"], set_("rag_phrase", True), ANY),
+        ("prompt:fewshot (retry)", ["calc", "multistep"], set_("fewshot", True), ANY),
+        ("loop:verify (retry)", ["multistep", "web"], set_("verify", True), ANY),
+    ],
 }

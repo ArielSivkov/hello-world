@@ -164,12 +164,30 @@ def reference_hits(question, chars=450, n=2):
         return []
 
 
-def format_notes(hits, facts=False):
+def format_notes(hits, facts=False, facts_only=False):
     out = []
     for h in hits:
         kf = key_facts(h["text"]) if facts else ""
-        out.append(f"[{h['title']}] " + (f"({kf}) " if kf else "") + h["text"])
+        if kf and facts_only:
+            out.append(f"[{h['title']}] {kf}")
+        else:
+            out.append(f"[{h['title']}] " + (f"({kf}) " if kf else "") + h["text"])
     return "\n".join(out)
+
+
+_ATTR = [("שנת לידה", r"לידה|נולד"), ("שנת פטירה", r"פטירה|נפטר|מות"), ("שנת ייסוד", r"ייסוד|נוסד|הוקמ|הקמת")]
+
+
+def pick_fact(question, text):
+    """Deterministic: the structured fact whose attribute the question names (None if unclear)."""
+    kf = dict(p.split(": ") for p in key_facts(text).split("; ") if ": " in p)
+    want = [k for k, pat in _ATTR if re.search(pat, question) and k in kf]
+    if len(want) == 1:
+        return f"{want[0]} {kf[want[0]]}"
+    if len(kf) == 1:
+        k = next(iter(kf))
+        return f"{k} {kf[k]}"
+    return None
 
 
 def reference_notes(question):
@@ -221,7 +239,9 @@ def doc_search(query, ctx=None):
     lines = [l for l in doc.split("\n") if l.strip()]
     q = _toks(query)
     k, nb = (ctx or {}).get("rag_k", 3), (ctx or {}).get("rag_neighbors", 1)
-    ranked = sorted(range(len(lines)), key=lambda i: (-len(q & _toks(lines[i])), i))[:k]
+    phrases = re.findall(r"'([^']+)'", query) if (ctx or {}).get("rag_phrase") else []
+    ranked = sorted(range(len(lines)), key=lambda i: (-sum(p + "," in lines[i] or p + "." in lines[i] for p in phrases),
+                                                      -len(q & _toks(lines[i])), i))[:k]
     out = []
     for i in ranked:
         out.append("\n".join(lines[max(0, i - nb):i + nb + 1]))

@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, field, asdict
 
 from . import llm
-from .tools import TOOLS, reference_hits, format_notes
+from .tools import TOOLS, reference_hits, format_notes, key_facts, pick_fact
 
 BASE_PROMPT = "You are Small ion, a helpful assistant. Answer in Hebrew, as briefly as possible."
 BASE_PROMPT_HE = "אתה Small ion, עוזר מועיל. ענה בעברית ובקיצור רב ככל האפשר."
@@ -56,6 +56,13 @@ class Config:
     sys_hebrew: bool = False
     brief: bool = False
     extract_hebrew: bool = False
+    # --- cycle 3 knobs ---
+    extract: str = "llm"          # "llm" | "facts-only" (model sees only the structured line) | "structured" (no model)
+    combine_hint: bool = False    # tell the combine step to subtract the smaller year from the larger
+    combine_name: bool = False    # "who" questions: no calc, answer with the exact name from the facts
+    notes_dated_only: bool = False  # attach notes only for articles that yield structured facts
+    notes_facts_only: bool = False  # show only the structured line when there is one
+    rag_phrase: bool = False      # rank lines holding the exact quoted phrase first
 
     def key(self):
         return repr(sorted(asdict(self).items()))
@@ -87,7 +94,7 @@ def _solve(question, cfg, doc=None, notes=None, force_tools=None):
     """One agent episode. Returns (answer, trace)."""
     user = question
     if doc and cfg.auto_rag:
-        rctx = {"doc": doc, "rag_k": cfg.rag_k, "rag_neighbors": cfg.rag_neighbors}
+        rctx = {"doc": doc, "rag_k": cfg.rag_k, "rag_neighbors": cfg.rag_neighbors, "rag_phrase": cfg.rag_phrase}
         user = (f"Relevant passages from a long document:\n{TOOLS['doc_search'][0](question, rctx)}"
                 f"\n\nQuestion: {question}")
     elif doc:
@@ -171,7 +178,9 @@ def grounded(answer, notes, question):
 def _lookup(question, cfg):
     """Answer directly, and again with retrieved notes; trust the notes-based answer only if it is grounded."""
     hits = reference_hits(question, cfg.notes_chars, cfg.notes_n) if cfg.auto_web else []
-    notes = format_notes(hits, cfg.notes_facts)
+    if cfg.notes_dated_only:
+        hits = [h for h in hits if key_facts(h["text"])]
+    notes = format_notes(hits, cfg.notes_facts, cfg.notes_facts_only)
     a0, t0 = _solve(question, cfg)
     if not notes:
         return a0, t0
@@ -186,7 +195,13 @@ def _lookup(question, cfg):
 
 def _combine(question, facts, cfg, trace):
     final = "Known facts:\n" + "\n".join(facts) + f"\n\nUsing these facts, answer: {question}"
-    a, t = _solve(final, cfg, force_tools=[x for x in cfg.tools if x == "calc"])
+    tools = [x for x in cfg.tools if x == "calc"]
+    if cfg.combine_name and question.strip().startswith("מי"):
+        tools = []
+        final += "\nAnswer with the name exactly as it is written in the facts above."
+    elif cfg.combine_hint:
+        final += "\nFor a difference in years, subtract the smaller year from the larger one."
+    a, t = _solve(final, cfg, force_tools=tools)
     return a, trace + [("facts", "\n".join(facts))] + t
 
 
@@ -208,17 +223,23 @@ def run(question, cfg, doc=None):
                 facts.append(f"- {q} {a}")
                 trace += t
             return _combine(question, facts, cfg, trace)
-    if cfg.decompose in ("entities", "entities-dated") and cfg.auto_web:
+    if cfg.decompose in ("entities", "entities-dated", "entities-facts") and cfg.auto_web:
         hits = reference_hits(question, cfg.notes_chars)
         tw = [set(re.findall(r"[^\W_]+", h["title"])) for h in hits]
         dated = cfg.decompose == "entities" or (
             all(re.search(r"\b1[5-9]\d\d\b|\b20[012]\d\b", h["text"][:300]) for h in hits)
             and not re.search(r"\d{2,}", question))
         # two different things are named in the question → one fact from each, then combine
+        if cfg.decompose == "entities-facts":
+            dated = all(key_facts(h["text"]) for h in hits) and not re.search(r"\d{2,}", question)
         if len(hits) == 2 and not (tw[0] & tw[1]) and dated:
             trace, facts = [("plan", "entities: " + " | ".join(h["title"] for h in hits))], []
             for h in hits:
-                note = format_notes([h], cfg.notes_facts)
+                fixed = pick_fact(question, h["text"]) if cfg.extract == "structured" else None
+                if fixed:
+                    facts.append(f"- {h['title']}: {fixed}")
+                    continue
+                note = format_notes([h], cfg.notes_facts, cfg.extract == "facts-only")
                 if cfg.extract_hebrew:
                     ask = (f"מידע: {note}\n\nהשאלה הכללית: {question}\nאיזו עובדה אחת על {h['title']} "
                            f"נדרשת כדי לענות עליה? ענה רק בעובדה עצמה (למשל שנה בלבד).")
