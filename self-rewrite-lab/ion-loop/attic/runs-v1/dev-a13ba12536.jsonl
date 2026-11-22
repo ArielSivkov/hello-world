@@ -1,0 +1,38 @@
+{"id": "web-000", "cat": "web", "ok": false, "answer": "העיר דימונה נוסדה ב-1492.", "steps": 1, "secs": 1.2, "trace": [["model", "העיר דימונה נוסדה ב-1492."]]}
+{"id": "web-001", "cat": "web", "ok": false, "answer": "נתן אלתרמן נולד ב-1905.", "steps": 1, "secs": 1.1, "trace": [["model", "נתן אלתרמן נולד ב-1905."]]}
+{"id": "web-002", "cat": "web", "ok": false, "answer": "Ashdod הוקמה ב-1924.", "steps": 1, "secs": 1.1, "trace": [["model", "Ashdod הוקמה ב-1924."]]}
+{"id": "web-003", "cat": "web", "ok": false, "answer": "נתניה נוסדה ב-1948.", "steps": 1, "secs": 1.0, "trace": [["model", "נתניה נוסדה ב-1948."]]}
+{"id": "web-004", "cat": "web", "ok": false, "answer": "1769.", "steps": 1, "secs": 0.5, "trace": [["model", "1769."]]}
+{"id": "web-005", "cat": "web", "ok": false, "answer": "שמואל יוסף עגנון נפטר ב-1956.", "steps": 1, "secs": 1.4, "trace": [["model", "שמואל יוסף עגנון נפטר ב-1956."]]}
+{"id": "web-006", "cat": "web", "ok": false, "answer": "Rachel, בת של יacob, נולדה ב-29 ביולי 1840.", "steps": 1, "secs": 2.5, "trace": [["model", "Rachel, בת של יacob, נולדה ב-29 ביולי 1840."]]}
+{"id": "web-007", "cat": "web", "ok": false, "answer": "אה גולדברג נולדה ב-1972.", "steps": 1, "secs": 1.7, "trace": [["model", "אה גולדברג נולדה ב-1972."]]}
+{"id": "multistep-008", "cat": "multistep", "ok": false, "answer": "4 שנים", "steps": 1, "secs": 0.5, "trace": [["model", "4 שנים"]]}
+{"id": "multistep-009", "cat": "multistep", "ok": true, "answer": "Rachel Masharet fulfills the Garden of Eden in 21 years.", "steps": 1, "secs": 1.7, "trace": [["model", "Rachel Masharet fulfills the Garden of Eden in 21 years."]]}
+{"id": "multistep-010", "cat": "multistep", "ok": false, "answer": "25", "steps": 1, "secs": 0.3, "trace": [["model", "25"]]}
+{"id": "multistep-011", "cat": "multistep", "ok": false, "answer": "הגיעתי לנהר של 2,800 שנים.", "steps": 1, "secs": 1.5, "trace": [["model", "הגיעתי לנהר של 2,800 שנים."]]}
+{"id": "multistep-012", "cat": "multistep", "ok": false, "answer": "54 лет.", "steps": 1, "secs": 0.5, "trace": [["model", "54 лет."]]}
+{"id": "multistep-013", "cat": "multistep", "ok": false, "answer": "40 years.", "steps": 1, "secs": 0.5, "trace": [["model", "40 years."]]}
+{"id": "basic-014", "cat": "basic", "ok": false, "answer": "\"בית\" dalam bahasa Hebrew הוא \"בית\" (bayit).", "steps": 1, "secs": 1.4, "trace": [["model", "\"בית\" dalam bahasa Hebrew הוא \"בית\" (bayit)."]]}
+{"id": "basic-015", "cat": "basic", "ok": false, "answer": "ההפך של המילה \"גדול\" הוא \"صغير\".", "steps": 1, "secs": 1.1, "trace": [["model", "ההפך של המילה \"גדול\" הוא \"صغير\"."]]}
+{"id": "basic-016", "cat": "basic", "ok": false, "answer": "הערבוב של כחול וצהוב מקבלת צבע אדום.", "steps": 1, "secs": 1.6, "trace": [["model", "הערבוב של כחול וצהוב מקבלת צבע אדום."]]}
+{"id": "basic-017", "cat": "basic", "ok": true, "answer": "יש 5 אצבעות ביד אחת.", "steps": 1, "secs": 0.9, "trace": [["model", "יש 5 אצבעות ביד אחת."]]}
+{"id": "basic-018", "cat": "basic", "ok": true, "answer": "5.", "steps": 1, "secs": 0.4, "trace": [["model", "5."]]}
+{"id": "basic-019", "cat": "basic", "ok": true, "answer": "dog", "steps": 1, "secs": 0.3, "trace": [["model", "dog"]]}
+{"id": "basic-020", "cat": "basic", "ok": false, "answer": "ראש הממשלה הראשון של מדינת ישראל היה מרדכי lickין.", "steps": 1, "secs": 1.2, "trace": [["model", "ראש הממשלה הראשון של מדינת ישראל היה מרדכי lickין."]]}
+{"id": "basic-021", "cat": "basic", "ok": true, "answer": "בירת צרפת היא פריז.", "steps": 1, "secs": 0.8, "trace": [["model", "בירת צרפת היא פריז."]]}
+{"id": "basic-022", "cat": "basic", "ok": true, "answer": "שעה × 60 דקות.", "steps": 1, "secs": 0.7, "trace": [["model", "שעה × 60 דקות."]]}
+{"id": "basic-023", "cat": "basic", "ok": false, "answer": "riviera", "steps": 1, "secs": 0.3, "trace": [["model", "riviera"]]}
+{"id": "basic-024", "cat": "basic", "ok": false, "answer": "Jerusalem.", "steps": 1, "secs": 0.4, "trace": [["model", "Jerusalem."]]}
+{"id": "basic-025", "cat": "basic", "ok": true, "answer": "7.0", "steps": 1, "secs": 0.4, "trace": [["model", "7.0"]]}
+{"id": "calc-026", "cat": "calc", "ok": false, "answer": "3684 * 5542 = 2,071,942,880", "steps": 1, "secs": 2.0, "trace": [["model", "3684 * 5542 = 2,071,942,880"]]}
+{"id": "calc-027", "cat": "calc", "ok": false, "answer": "781900 + 2034 * 4032 = 781900 + 8166528 = 8948428", "steps": 1, "secs": 3.6, "trace": [["model", "781900 + 2034 * 4032 = 781900 + 8166528 = 8948428"]]}
+{"id": "calc-028", "cat": "calc", "ok": false, "answer": "44826 / 31 + 8606 = 2705.9703", "steps": 1, "secs": 2.2, "trace": [["model", "44826 / 31 + 8606 = 2705.9703"]]}
+{"id": "calc-029", "cat": "calc", "ok": false, "answer": "6874 × 8012 = 5,513,932,888", "steps": 1, "secs": 2.2, "trace": [["model", "6874 × 8012 = 5,513,932,888"]]}
+{"id": "calc-030", "cat": "calc", "ok": false, "answer": "558946 + 2264 * 6244 = 13008070", "steps": 1, "secs": 2.4, "trace": [["model", "558946 + 2264 * 6244 = 13008070"]]}
+{"id": "calc-031", "cat": "calc", "ok": false, "answer": "13 + 6978 = 7091", "steps": 1, "secs": 1.4, "trace": [["model", "13 + 6978 = 7091"]]}
+{"id": "longdoc-032", "cat": "longdoc", "ok": false, "answer": "קוד הפריט \"פמוט מאבן\" הוא HU-1674.", "steps": 1, "secs": 13.2, "trace": [["model", "קוד הפריט \"פמוט מאבן\" הוא HU-1674."]]}
+{"id": "longdoc-033", "cat": "longdoc", "ok": false, "answer": "פריט 'פמוט משיש' נמצא על מדף משיש, קוד HM-8630.", "steps": 1, "secs": 13.2, "trace": [["model", "פריט 'פמוט משיש' נמצא על מדף משיש, קוד HM-8630."]]}
+{"id": "longdoc-034", "cat": "longdoc", "ok": false, "answer": "קוד התגיה של הפריט \"מגש מנחושת\" הוא HU-8444.", "steps": 1, "secs": 13.3, "trace": [["model", "קוד התגיה של הפריט \"מגש מנחושת\" הוא HU-8444."]]}
+{"id": "longdoc-035", "cat": "longdoc", "ok": false, "answer": "פריט 8.", "steps": 1, "secs": 12.5, "trace": [["model", "פריט 8."]]}
+{"id": "longdoc-036", "cat": "longdoc", "ok": false, "answer": "קוד הקod של הפריט \"סולם מכסף\" הוא HS-1095.", "steps": 1, "secs": 13.6, "trace": [["model", "קוד הקod של הפריט \"סולם מכסף\" הוא HS-1095."]]}
+{"id": "longdoc-037", "cat": "longdoc", "ok": false, "answer": "פריט 34.", "steps": 1, "secs": 11.6, "trace": [["model", "פריט 34."]]}

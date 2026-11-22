@@ -1,0 +1,271 @@
+[
+ {
+  "cycle": 0,
+  "train_window": 0,
+  "test_window": 1,
+  "n_train": 197,
+  "n_replay": 0,
+  "n_anchor": 98,
+  "train_loss": 2.8757,
+  "bpt": {
+   "base": 5.450988687745854,
+   "base+retrieval": 5.297660689792994,
+   "incumbent": 5.450988687745854,
+   "candidate": 5.362969225865882,
+   "candidate+retrieval": 5.275830070842486
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.08801946187997167,
+   "lo": -0.09405925766577693,
+   "hi": -0.08229857931029362
+  },
+  "candidate_vs_base": {
+   "diff": -0.08801946187997167,
+   "lo": -0.09405925766577693,
+   "hi": -0.08229857931029362
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.06530853607288822,
+   "lo": 0.05292498340867285,
+   "hi": 0.07783267048798807
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.021830618950508196,
+   "lo": -0.025480441140610145,
+   "hi": -0.018339047497305305
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.08454525064800045,
+    "lo": -0.09314011853191234,
+    "hi": -0.07608670172831042
+   },
+   "core_general": {
+    "diff": -0.022761523239281267,
+    "lo": -0.029894493407456414,
+    "hi": -0.016169059772971478
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 854
+ },
+ {
+  "cycle": 1,
+  "train_window": 1,
+  "test_window": 2,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 2.8931,
+  "bpt": {
+   "base": 5.421407674889483,
+   "base+retrieval": 5.282242933453376,
+   "incumbent": 5.334364590529691,
+   "candidate": 5.314317663681528,
+   "candidate+retrieval": 5.243036223800986
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.02004692684816245,
+   "lo": -0.02277148999093099,
+   "hi": -0.017263857255611595
+  },
+  "candidate_vs_base": {
+   "diff": -0.10709001120795492,
+   "lo": -0.11473362041789364,
+   "hi": -0.09993150422930365
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.032074730228152326,
+   "lo": 0.02103752188676848,
+   "hi": 0.04369093563767365
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.03920670965239026,
+   "lo": -0.04355226364280989,
+   "hi": -0.03502659064329313
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.11120178951208537,
+    "lo": -0.12074399894581553,
+    "hi": -0.10124328018030546
+   },
+   "core_general": {
+    "diff": -0.019998493493747382,
+    "lo": -0.027870135536499297,
+    "hi": -0.012665367060626874
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 1103
+ },
+ {
+  "cycle": 2,
+  "train_window": 2,
+  "test_window": 3,
+  "n_train": 181,
+  "n_replay": 90,
+  "n_anchor": 90,
+  "train_loss": 2.8555,
+  "bpt": {
+   "base": 5.507114159650949,
+   "base+retrieval": 5.348607429019059,
+   "incumbent": 5.400208894493691,
+   "candidate": 5.39953156704699,
+   "candidate+retrieval": 5.311111145420698
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.0006773274467004597,
+   "lo": -0.0026782525526332893,
+   "hi": 0.001241458691476923
+  },
+  "candidate_vs_base": {
+   "diff": -0.10758259260395864,
+   "lo": -0.11620697837839067,
+   "hi": -0.09902701538718095
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.0509241380279315,
+   "lo": 0.03912407538495053,
+   "hi": 0.06349687358108319
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.03749628359836077,
+   "lo": -0.0427875443330802,
+   "hi": -0.032584552349543765
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.12191143360668111,
+    "lo": -0.13320277071549425,
+    "hi": -0.1105939275515795
+   },
+   "core_general": {
+    "diff": -0.016686792073842938,
+    "lo": -0.025302040735243593,
+    "hi": -0.008545838823800885
+   }
+  },
+  "decision": {
+   "accept": false,
+   "reasons": [
+    "no significant gain on fresh data (upper bound +0.0012)"
+   ]
+  },
+  "seconds": 1040
+ },
+ {
+  "cycle": 3,
+  "train_window": 3,
+  "test_window": 4,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 2.9043,
+  "bpt": {
+   "base": 5.423511134236186,
+   "base+retrieval": 5.252113754213389,
+   "incumbent": 5.315265913345021,
+   "candidate": 5.3111538259669535,
+   "candidate+retrieval": 5.217576797198954
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.004112087378067564,
+   "lo": -0.006421468145541312,
+   "hi": -0.0018342271879503076
+  },
+  "candidate_vs_base": {
+   "diff": -0.11235730826923263,
+   "lo": -0.12085744262561463,
+   "hi": -0.10362138379623388
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.059040071753564405,
+   "lo": 0.04756979682779491,
+   "hi": 0.07187410397743156
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.03453695701443493,
+   "lo": -0.039599236739239214,
+   "hi": -0.029362014425717373
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.12590902466976228,
+    "lo": -0.13718159322914203,
+    "hi": -0.11462498399919084
+   },
+   "core_general": {
+    "diff": -0.02002982382063756,
+    "lo": -0.028038516660446225,
+    "hi": -0.012813625892627672
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 999
+ },
+ {
+  "cycle": 4,
+  "train_window": 4,
+  "test_window": 5,
+  "n_train": 200,
+  "n_replay": 100,
+  "n_anchor": 100,
+  "train_loss": 2.8979,
+  "bpt": {
+   "base": 5.4641990386420485,
+   "base+retrieval": 5.300089616729241,
+   "incumbent": 5.362675399414135,
+   "candidate": 5.3655529987110935,
+   "candidate+retrieval": 5.272019189187964
+  },
+  "candidate_vs_incumbent": {
+   "diff": 0.002877599296958522,
+   "lo": 0.0007366281224681255,
+   "hi": 0.004976748890586574
+  },
+  "candidate_vs_base": {
+   "diff": -0.098646039930955,
+   "lo": -0.10757284861493983,
+   "hi": -0.08929197287514536
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.06546338198185264,
+   "lo": 0.04706294660825907,
+   "hi": 0.08647778382272277
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.028070427541276644,
+   "lo": -0.03360070197949956,
+   "hi": -0.022511293266198787
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.13421478663551323,
+    "lo": -0.1465169044542907,
+    "hi": -0.12179290129037375
+   },
+   "core_general": {
+    "diff": -0.016813550669744437,
+    "lo": -0.024851159304354633,
+    "hi": -0.009206133876566287
+   }
+  },
+  "decision": {
+   "accept": false,
+   "reasons": [
+    "no significant gain on fresh data (upper bound +0.0050)"
+   ]
+  },
+  "seconds": 914
+ }
+]

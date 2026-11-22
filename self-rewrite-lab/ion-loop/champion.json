@@ -1,0 +1,10 @@
+{
+ "tools": [],
+ "fewshot": false,
+ "plan": false,
+ "verify": false,
+ "max_steps": 4,
+ "doc_chars": 2500,
+ "auto_rag": true,
+ "temperature": 0.0
+}
