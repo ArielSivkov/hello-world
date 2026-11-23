@@ -166,7 +166,10 @@ def test_real_replies_never_crash_the_parser(path):
         assert isinstance(change, str) and change
         assert (src is None) == (why is not None)
         if src is not None and fmt == "edits":
-            sandbox.load(src)
+            try:                    # a file that parses may still be refused (a hook that returns no str):
+                sandbox.load(src)   # that is a refusal with a reason, never a crash
+            except sandbox.Refused as e:
+                assert str(e).startswith(("hook:", "sandbox:")) or "CONFIG" in str(e), e
 
 
 REAL = os.path.join(LAB, "rewrite", "lineage", "qwen2.5-1.5b", "attempts")
@@ -287,3 +290,9 @@ def test_real_partial_replies_are_refused_in_full_mode_but_applied_in_edit_mode(
     seed_cfg = sandbox.load(SEED).CONFIG
     mod = sandbox.load(src)        # one live worker at a time: load the seed first
     assert mod.CONFIG == seed_cfg and mod.prepare("A B", "d") != "A B"
+
+
+def test_set_config_prefix_as_llama_writes_it():
+    for reply in ("CHANGE: x\nSET CONFIG: max_steps=6", 'CHANGE: x\nSET CONFIG["max_steps"] = 6'):
+        src, _, why = proposer.parse(reply, SEED, "edits")
+        assert why is None and '"max_steps": 6' in src

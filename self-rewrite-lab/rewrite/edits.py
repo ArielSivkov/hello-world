@@ -46,7 +46,8 @@ _FENCE = re.compile(r"```[ \t]*([A-Za-z0-9_+-]*)[ \t]*\n(.*?)(?:```|\Z)", re.S)
 _SR = re.compile(r"^[ \t]*<{5,9}[ \t]*SEARCH[ \t]*\n(.*?)^[ \t]*={5,9}[ \t]*\n(.*?)^[ \t]*>{5,9}[ \t]*REPLACE[ \t]*$",
                  re.S | re.M)
 _CHANGE = re.compile(r"^[ \t>*_-]*(?:#\s*)?\**CHANGE\**\s*:\**\s*(.+?)\s*$", re.M | re.I)
-_SET = re.compile(r"^[ \t>*-]*SET\s+`?([A-Za-z_][A-Za-z0-9_]*)`?\s*(?:=|:|\bto\b)\s*(.+?)\s*$", re.M)
+_SET = re.compile(r"^[ \t>*-]*SET\s+(?:CONFIG\s*[:.]?\s*|CONFIG\[[\"']?)?`?([A-Za-z_][A-Za-z0-9_]*)`?[\"']?\]?"
+                  r"\s*(?:=|:|\bto\b)\s*(.+?)\s*$", re.M)      # also "SET CONFIG: key = v" (Llama-3.2-1B, run 2)
 _BARE = re.compile(r"^[ \t>*-]*`?([a-z][a-z0-9_]*)`?\s*=\s*(\S.*?)\s*$", re.M)
 _SYS = re.compile(r"^[ \t>*-]*`?SYSTEM_EXTRA`?\s*[=:]\s*(.+?)\s*$", re.M)
 
