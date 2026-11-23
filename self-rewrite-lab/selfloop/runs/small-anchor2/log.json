@@ -1,0 +1,59 @@
+[
+ {
+  "cycle": 0,
+  "train_window": 0,
+  "test_window": 1,
+  "train_on": "raw",
+  "generator": null,
+  "n_items": 20,
+  "gen_seconds": 0,
+  "n_train": 20,
+  "n_replay": 0,
+  "n_anchor": 10,
+  "train_loss": 3.4445,
+  "bpt": {
+   "base": 5.36923348871563,
+   "base+retrieval": 5.262815866271896,
+   "incumbent": 5.36923348871563,
+   "candidate": 5.3190028712080855,
+   "candidate+retrieval": 5.246662541353125
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.05023061750754465,
+   "lo": -0.06303943234784543,
+   "hi": -0.03803248327272241
+  },
+  "candidate_vs_base": {
+   "diff": -0.05023061750754465,
+   "lo": -0.06303943234784543,
+   "hi": -0.03803248327272241
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.056187004936189666,
+   "lo": 0.03248941741221686,
+   "hi": 0.07889394701691324
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.016153324918771084,
+   "lo": -0.021745487440113766,
+   "hi": -0.010135899045013748
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.0279041986820312,
+    "lo": -0.03633221503642469,
+    "hi": -0.020112175249157264
+   },
+   "core_general": {
+    "diff": -0.009521236599852934,
+    "lo": -0.013803028509297932,
+    "hi": -0.005605269690953102
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 69
+ }
+]
