@@ -1,0 +1,6 @@
+CHANGE: improve the basic category handling
+
+```python
+def prepare(question, doc):
+    return question.replace("ההפך של המילה", "המגעף של המילה").replace("הOpposite of the word", "The opposite of the word")
+```
