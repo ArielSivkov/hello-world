@@ -35,10 +35,13 @@ python3 -m llama_cpp.server --model qwen2.5-1.5b-instruct-q4_k_m.gguf --n_ctx 81
 # אינדקס החיפוש (פעם אחת): parquet של 20231101.he מ-huggingface.co/datasets/wikimedia/wikipedia
 (cd ion-loop && python3 -m ion.build_index <תיקיית parquet> data/hewiki.db)
 
-python3 -m pytest -q rewrite/tests                         # 18 בדיקות, בלי מודל
+python3 -m pytest -q rewrite/tests                         # 64 בדיקות, בלי מודל
 python3 -m rewrite.evaluate --genome rewrite/genome/seed.py # ציון של גנום אחד
 python3 -m rewrite.loop --generations 10                    # הלולאה
+python3 -m rewrite.loop --format full                       # המציע מחזיר קובץ שלם (מצב הריצה הראשונה)
 ```
+
+פורמט ההצעה (`--format`, ברירת מחדל `edits`): המציע כותב רק את השינוי — `CHANGE:`, שורות `SET <מפתח> = <ערך>`, `SYSTEM_EXTRA = "..."`, בלוק python עם `prepare`/`finalize` חדשה, או בלוקי SEARCH/REPLACE — ו-`rewrite/edits.py` מחיל אותו על האלוף ובונה קובץ שלם, שעובר באותו ארגז חול ושער. תשובה שלא נקראת חוזרת למציע פעם אחת עם השגיאה (`--retries`).
 
 משתני סביבה: `ION_BASE_URL` ו-`ION_TAG` (הסוכן, כמו ב-ion-loop), ו-`REWRITE_PROPOSER_URL` ו-`REWRITE_PROPOSER_MODEL` (מציע אחר מהסוכן).
 

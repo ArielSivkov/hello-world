@@ -1,6 +1,10 @@
 """Asks a model to rewrite the genome. By default that model is the agent's own model (true self-rewriting);
 point REWRITE_PROPOSER_URL / REWRITE_PROPOSER_MODEL at any OpenAI-compatible server to use another one.
 
+Two reply formats (rewrite.loop --format): "full", the complete new file in one code block, and "edits",
+only the change (SET lines, SYSTEM_EXTRA, new functions, SEARCH/REPLACE), which rewrite/edits.py applies
+to the champion. Both end as a complete candidate file judged by the same sandbox and gate.
+
 The proposer sees: the current genome, its dev scores, dev failures from the weakest category, and the
 recent attempts the gate refused. It never sees holdout tasks or results.
 """
@@ -9,6 +13,8 @@ import os
 import re
 
 import requests
+
+from rewrite import edits
 
 URL = os.environ.get("REWRITE_PROPOSER_URL", os.environ.get("ION_BASE_URL", "http://localhost:8080/v1"))
 MODEL = os.environ.get("REWRITE_PROPOSER_MODEL", os.environ.get("ION_MODEL", "local"))
@@ -36,8 +42,8 @@ What the policy file controls:
 - CONFIG: switches of the agent (keep the same keys; you may change values).
 - SYSTEM_EXTRA: text appended to the agent's system prompt.
 - prepare(question, doc): returns the question text the agent will see (doc is a long document or None).
-- finalize(question, answer): returns the final answer that the judge checks. The judge accepts an
-  answer if it contains one of the expected strings (numbers are matched as whole numbers).
+- finalize(question, answer): returns the final answer that the judge checks. The judge expects ONE
+  short answer: a hedge, a list of guesses or a long answer is marked wrong.
 
 Rules: allowed imports are re, math, json, unicodedata, string, collections, itertools, functools.
 No while loops, no lambdas, no classes, no print, no names starting with "_". Keep both functions.
@@ -46,19 +52,52 @@ Make ONE focused change that should fix some of the failures shown, without brea
 Reply with the complete new file in a single ```python code block. Its first line must be a comment:
 # CHANGE: <one short sentence describing your change>"""
 
+# Edit format: a short prompt for a small model. It never asks for the whole file, the CONFIG is packed
+# onto a few lines, and one concrete reply shows the format. The harness turns the reply into a file.
+INSTRUCTIONS_EDITS = """You improve the policy of a small Hebrew question-answering agent. An automatic judge
+scores every version and keeps yours only if the total score rises and no category drops by more than 10.
 
-def build_prompt(source, result, refused, n_fail=6):
+The policy has four parts. CONFIG holds the agent's switches. SYSTEM_EXTRA is text added to the agent's
+system prompt. prepare(question, doc) returns the question text the agent sees. finalize(question, answer)
+returns the final answer; the judge expects ONE short answer (hedges and lists of guesses are wrong).
+
+Do NOT write the whole file. Write only your change:
+line 1:  CHANGE: <one short sentence>
+then one or more of these:
+  SET <config key> = <new value>        (one line per switch)
+  SYSTEM_EXTRA = "<text in English or Hebrew>"
+  a ```python block with a complete new def prepare(question, doc) or def finalize(question, answer)
+Python rules: imports only from re, math, json, unicodedata, string, collections, itertools, functools.
+No while, no lambda, no class, no print, no names starting with _.
+
+Example of a reply in the right format (write your own change, not this one):
+CHANGE: cut the answer at the first newline
+```python
+def finalize(question, answer):
+    return answer.strip().split("\\n")[0]
+```
+
+Make ONE small change that should fix some of the failures below without breaking other categories."""
+
+
+def build_prompt(source, result, refused, n_fail=None, fmt="full"):
+    edit = fmt == "edits"
+    n_fail = n_fail if n_fail is not None else (4 if edit else 6)
+    trace_chars = 300 if edit else 500
     cats = result["cats"]
     weakest = sorted(cats, key=lambda c: cats[c])
     fails = sorted(result.get("failures", []), key=lambda f: weakest.index(f["cat"]))[:n_fail]
-    parts = [INSTRUCTIONS,
+    shown = edits.compact(source) if edit else source
+    parts = [INSTRUCTIONS_EDITS if edit else INSTRUCTIONS,
              f"\nCurrent scores (percent correct per category): {json.dumps(cats)}; total {result['total']}.",
+             "\nCurrent policy:\n```python\n" + shown.strip() + "\n```" if edit else
              "\nCurrent policy file:\n```python\n" + source.strip() + "\n```"]
     if fails:
         lines = []
         for f in fails:
-            lines.append(f"- [{f['cat']}/{f['kind']}] question: {f['q']}\n  expected: {f['expected']}  "
-                         f"got: {f['got']!r}\n  last steps: " + " || ".join(f["trace"][-3:])[:500])
+            # the expected answer is never shown: a proposer that sees it can memorise the test set
+            lines.append(f"- [{f['cat']}/{f['kind']}] question: {f['q']}\n  the agent answered (wrong): "
+                         f"{f['got']!r}\n  last steps: " + " || ".join(f["trace"][-3:])[:trace_chars])
         parts.append("\nFailures (weakest categories first):\n" + "\n".join(lines))
     if refused:
         parts.append("\nRecent attempts the judge refused (do not repeat them):\n" +
@@ -84,5 +123,27 @@ def extract(reply):
     if not blocks:
         return None, "no python code block in the reply"
     src = max(blocks, key=len).strip() + "\n"
-    m = re.match(r"\s*#\s*CHANGE:\s*(.+)", src)
+    m = re.match(r"\s*#\s*CHANGE:\s*(.+)", src) or re.search(r"^\s*#?\s*CHANGE:\s*(.+)$", reply, re.M)
     return src, (m.group(1).strip()[:160] if m else "(no CHANGE line)")
+
+
+def parse(reply, champion, fmt="full"):
+    """Returns (source, change, why): source is the complete candidate file, or None with `why` set."""
+    if fmt == "full":
+        src, change = extract(reply)
+        return (src, change, None) if src is not None else (None, "(unparseable)", change)
+    try:
+        src, change = edits.apply_reply(champion, reply)
+    except edits.EditError as e:
+        m = edits._CHANGE.search(reply or "")
+        return None, (m.group(1).strip()[:160] if m else "(unparseable)"), f"edit: {e}"
+    if src.strip() == champion.strip():
+        return None, change, ("edit: the reply changes nothing (the values are already set, or the file was "
+                              "copied back); send only the lines that change")
+    return src, change, None
+
+
+def retry_prompt(prompt, why):
+    """The same prompt with the parse error of the previous reply, for one more try."""
+    return (prompt + f"\n\nYour previous reply could not be used: {why}\n"
+            "Reply again, following the format exactly.")

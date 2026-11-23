@@ -1,68 +1,138 @@
-"""The gate: measures a genome in a separate process and decides whether it replaces the champion.
+"""The gate: measures a genome in a separate judge process and decides whether it replaces the champion.
 
-The judge is out of the genome's reach by construction (sandbox.py), and the fingerprint of every
-file the judge depends on is checked before each decision, so a change to the judge stops the run.
+The judge process (rewrite/evaluate.py) never executes genome code; hooks run in an isolated worker.
+Hardened after swarm/2026-11-23 (red team + black agent):
+  - the result comes back through a private file, never stdout, and is schema-checked here;
+  - the fingerprint covers every Python file the judge or the loop runs, the arena data and the index;
+  - the judge child runs in its own session and is killed as a group on timeout;
+  - no ratchet: no category may fall more than `tolerance` below the champion OR the seed;
+  - a minimum margin of correct tasks, so one lucky task is not a win;
+  - decide() never raises.
 """
+import glob
 import hashlib
 import json
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 
 LAB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROTECTED = [
-    "ion-loop/arena/check.py", "ion-loop/arena/run.py", "ion-loop/arena/dev.jsonl",
-    "ion-loop/arena/holdout.jsonl", "ion-loop/ion/agent.py", "ion-loop/ion/tools.py", "ion-loop/ion/llm.py",
-    "rewrite/gate.py", "rewrite/sandbox.py", "rewrite/evaluate.py",
-]
+PATTERNS = ["ion-loop/ion/*.py", "ion-loop/arena/*.py", "ion-loop/arena/*.jsonl", "ion-loop/arena/*.json",
+            "ion-loop/arena/v1/*", "rewrite/*.py", "rewrite/genome/seed.py"]
+BIG = ["ion-loop/data/hewiki.db"]
+_big_cache = {}
 
 
 class JudgeChanged(Exception):
     pass
 
 
+def protected():
+    files = set()
+    for pat in PATTERNS:
+        files.update(os.path.relpath(p, LAB) for p in glob.glob(os.path.join(LAB, pat)))
+    return sorted(files)
+
+
+def _sha(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 def fingerprint():
-    out = {}
-    for rel in PROTECTED:
-        with open(os.path.join(LAB, rel), "rb") as f:
-            out[rel] = hashlib.sha256(f.read()).hexdigest()
+    out = {rel: _sha(os.path.join(LAB, rel)) for rel in protected()}
+    for rel in BIG:
+        p = os.path.join(LAB, rel)
+        if os.path.exists(p):
+            st = os.stat(p)
+            key = (p, st.st_size, st.st_mtime_ns)
+            if key not in _big_cache:
+                _big_cache[key] = _sha(p)
+            out[rel] = _big_cache[key]
     return out
 
 
 def verify(expected):
     now = fingerprint()
-    changed = [k for k in expected if now.get(k) != expected[k]]
+    changed = sorted(k for k in set(expected) | set(now) if now.get(k) != expected.get(k))
     if changed:
-        raise JudgeChanged(f"judge files changed during the run: {changed}")
+        raise JudgeChanged(f"judge files changed during the run: {changed[:10]}")
+
+
+def _valid(res, split, source):
+    from rewrite.evaluate import genome_id
+    if not isinstance(res, dict):
+        return "malformed result"
+    if "refused" in res:
+        return str(res["refused"])[:300]
+    cats = res.get("cats")
+    if res.get("split") != split or res.get("genome") != genome_id(source):
+        return "result does not match the request"
+    if not isinstance(cats, dict) or not cats or not all(
+            isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100 for v in cats.values()):
+        return "malformed result"
+    if not isinstance(res.get("n_correct"), int) or not isinstance(res.get("n_tasks"), int):
+        return "malformed result"
+    return None
 
 
 def score(source, split="dev", timeout=3600, log=None):
-    """Run rewrite.evaluate in a child process. Returns the result dict, or {"error": ...}."""
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
+    """Judge one genome in a child process. Returns the result dict, or {"error": <fixed short reason>}."""
+    priv = tempfile.mkdtemp(prefix="gate-")
+    os.chmod(priv, 0o700)
+    gpath, opath = os.path.join(priv, "genome.py"), os.path.join(priv, "result.json")
+    with open(gpath, "w", encoding="utf-8") as f:
         f.write(source)
-        path = f.name
+    p = subprocess.Popen([sys.executable, "-m", "rewrite.evaluate", "--genome", gpath, "--split", split,
+                          "--out", opath, "--quiet"], cwd=LAB, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, start_new_session=True)
     try:
-        p = subprocess.run([sys.executable, "-m", "rewrite.evaluate", "--genome", path, "--split", split],
-                           cwd=LAB, capture_output=True, text=True, timeout=timeout)
+        out, _ = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.wait()
+        shutil.rmtree(priv, ignore_errors=True)
         return {"error": f"timeout after {timeout}s"}
-    finally:
-        os.unlink(path)
     if log:
-        log.write(p.stdout + p.stderr)
+        log.write(out.decode(errors="replace")[-20000:])
         log.flush()
-    for line in reversed(p.stdout.splitlines()):
-        if line.startswith("RESULT "):
-            return json.loads(line[7:])
-    tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
-    return {"error": "evaluation failed: " + " | ".join(tail)[:400]}
+    try:
+        res = json.load(open(opath, encoding="utf-8"))
+    except (OSError, ValueError):
+        res = None
+    finally:
+        shutil.rmtree(priv, ignore_errors=True)
+    if res is None:
+        return {"error": f"the judge failed (exit {p.returncode})"}   # no free text: it could carry test data
+    bad = _valid(res, split, source)
+    if bad:
+        return {"error": bad}
+    res["total"] = round(sum(res["cats"].values()) / len(res["cats"]), 1)   # recomputed, never trusted
+    return res
 
 
-def decide(cur, new, tolerance=10):
-    """Same rule as ion-loop: the total must rise and no category may drop by more than `tolerance`."""
-    if "error" in new:
-        return False, {}
-    regress = {c: (cur["cats"][c], new["cats"].get(c, 0)) for c in cur["cats"]
-               if new["cats"].get(c, 0) < cur["cats"][c] - tolerance}
-    return new["total"] > cur["total"] and not regress, regress
+def decide(cur, new, seed=None, tolerance=10, margin=2):
+    """Returns (keep, regressions, reason). Never raises."""
+    try:
+        if "error" in new:
+            return False, {}, new["error"]
+        if set(new["cats"]) != set(cur["cats"]):
+            return False, {}, "categories differ"
+        floor = {c: cur["cats"][c] - tolerance for c in cur["cats"]}
+        if seed:
+            floor = {c: max(floor[c], seed["cats"][c] - tolerance) for c in floor}
+        regress = {c: (cur["cats"][c], new["cats"][c]) for c in floor if new["cats"][c] < floor[c]}
+        if regress:
+            return False, regress, f"regression {regress}"
+        gain = new["n_correct"] - cur["n_correct"]
+        if new["total"] <= cur["total"] or gain < margin:
+            return False, {}, f"total {cur['total']} -> {new['total']}, {gain:+d} tasks (needs a rise of {margin}+)"
+        return True, {}, "accepted"
+    except Exception as e:     # noqa: BLE001
+        return False, {}, f"gate error: {type(e).__name__}"

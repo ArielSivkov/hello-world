@@ -1,7 +1,10 @@
-"""Static checks for a proposed genome, and loading it as an isolated module.
+"""Static checks for a proposed genome: a first filter that gives the proposer a useful reason.
 
-A genome that fails any check is refused before it runs. The checks are deliberately strict: the
-genome may compute on strings, it may not reach the judge, the disk, the network or the interpreter.
+This is NOT the security boundary. The red team (swarm/2026-11-23/red-team) escaped an in-process
+version of it through allowed modules (re.enum.sys, json.codecs) and frame attributes. Genome code
+now runs only in rewrite/hookworker.py, inside bubblewrap with no lab files, no network and rlimits.
+This module also validates the values the genome reports (CONFIG, SYSTEM_EXTRA) in the judge.
+This file is bound into the worker, so it must import nothing from the lab at module level.
 """
 import ast
 import dataclasses
@@ -30,10 +33,14 @@ def check(source):
     """Raise Refused with a short reason, or return the parsed tree."""
     if len(source.encode()) > MAX_BYTES:
         raise Refused(f"genome is larger than {MAX_BYTES} bytes")
+    if not isinstance(source, str):
+        raise Refused("genome must be text")
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
         raise Refused(f"syntax error: {e.msg} (line {e.lineno})")
+    except (MemoryError, RecursionError, ValueError) as e:     # deep nesting overflows the parser
+        raise Refused(f"genome cannot be parsed: {type(e).__name__}")
 
     for node in tree.body:     # module level: declarations only, no side effects at import time
         ok = isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.Assign, ast.AnnAssign)) or (
@@ -89,31 +96,106 @@ def _builtins():
     return b
 
 
-def load(source, name="genome"):
-    """Check, execute in a fresh module with a reduced builtins table, and validate the values."""
-    check(source)
-    mod = types.ModuleType(name)
-    mod.__dict__["__builtins__"] = _builtins()
-    try:
-        exec(compile(source, f"<{name}>", "exec"), mod.__dict__)
-    except Exception as e:     # noqa: BLE001
-        raise Refused(f"genome failed to import: {type(e).__name__}: {e}")
-    cfg = getattr(mod, "CONFIG", None)
+# Allowed values of CONFIG (types and ranges). The agent and its tools are fixed; the genome only
+# chooses among their switches. No network tool (fetch); sampling is locked to temperature 0.
+CHOICES = {
+    "decompose": {"", "llm", "entities", "entities-dated", "entities-facts"},
+    "extract": {"llm", "facts-only", "structured"},
+}
+ALLOWED_TOOLS = {"calc", "web_search", "doc_search"}
+RANGES = {"max_steps": (1, 8), "doc_chars": (200, 6000), "notes_chars": (100, 1500), "notes_n": (1, 4),
+          "rag_k": (1, 6), "rag_neighbors": (0, 2)}
+MAX_EXTRA = 2000
+
+
+def validate_config(cfg):
+    """Return a clean CONFIG dict or raise Refused. Unknown keys, wrong types, values out of range."""
+    from ion.agent import Config
+    fields = {f.name: f for f in dataclasses.fields(Config)}
     if not isinstance(cfg, dict):
         raise Refused("CONFIG must be a dict")
-    unknown = set(cfg) - config_fields()
+    unknown = set(cfg) - set(fields)
     if unknown:
-        raise Refused(f"unknown CONFIG keys: {sorted(unknown)}")
-    if not isinstance(getattr(mod, "SYSTEM_EXTRA", None), str):
+        raise Refused(f"unknown CONFIG keys: {sorted(unknown)[:5]}")
+    defaults = Config()
+    out = {}
+    for k, v in cfg.items():
+        d = getattr(defaults, k)
+        if k == "temperature":
+            if v not in (0, 0.0):
+                raise Refused("temperature is locked to 0")
+            v = 0.0
+        elif k == "tools":
+            if not isinstance(v, list) or not all(isinstance(x, str) for x in v) or set(v) - ALLOWED_TOOLS:
+                raise Refused(f"tools must be a list drawn from {sorted(ALLOWED_TOOLS)}")
+            v = list(dict.fromkeys(v))
+        elif isinstance(d, bool):
+            if not isinstance(v, bool):
+                raise Refused(f"CONFIG {k} must be true or false")
+        elif isinstance(d, int):
+            if isinstance(v, bool) or not isinstance(v, int) or not (RANGES[k][0] <= v <= RANGES[k][1]):
+                raise Refused(f"CONFIG {k} must be an integer in {list(RANGES[k])}")
+        elif isinstance(d, str):
+            if not isinstance(v, str) or v not in CHOICES.get(k, {v}):
+                raise Refused(f"CONFIG {k} must be one of {sorted(CHOICES[k])}")
+        out[k] = v
+    return out
+
+
+def validate_extra(extra):
+    if not isinstance(extra, str):
         raise Refused("SYSTEM_EXTRA must be a str")
-    if len(mod.SYSTEM_EXTRA) > 2000:
-        raise Refused("SYSTEM_EXTRA is longer than 2000 characters")
-    try:     # smoke test: the hooks must return strings on ordinary input
-        for q in ("מהי בירת צרפת?", "כמה זה 1234 כפול 5678?", ""):
-            if not isinstance(mod.prepare(q, None), str) or not isinstance(mod.finalize(q, "פריז"), str):
-                raise Refused("prepare() and finalize() must return str")
+    if len(extra) > MAX_EXTRA:
+        raise Refused(f"SYSTEM_EXTRA is longer than {MAX_EXTRA} characters")
+    return extra
+
+
+def contains_test_answer(source, answers, min_len=3):
+    """Return a short reason if any string constant in the genome holds an expected test answer."""
+    tree = ast.parse(source)
+    consts = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    blob = "\n".join(consts).lower()
+    for a in answers:
+        a = a.lower().strip()
+        if len(a) >= min_len and a in blob:
+            return "the genome contains an answer of the test set"
+    return None
+
+
+class _Loaded:
+    """What load() returns: the genome's values, with hooks that run in the isolated worker."""
+
+    def __init__(self, worker):
+        self._w = worker
+        self.CONFIG = validate_config(worker.config)
+        self.SYSTEM_EXTRA = validate_extra(worker.system_extra)
+
+    def prepare(self, question, doc):
+        return self._w.call("prepare", q=question, doc=doc)
+
+    def finalize(self, question, answer):
+        return self._w.call("finalize", q=question, a=answer)
+
+
+def load(source):
+    """Check a genome and start it in the isolated worker (never in this process). Raises Refused."""
+    import atexit
+    from rewrite.isolation import HookWorker, HookError
+    check(source)
+    try:
+        w = HookWorker(source)
+    except HookError as e:
+        raise Refused(f"hook: {e}")
+    atexit.register(w.close)
+    try:
+        mod = _Loaded(w)
+        for q in ("מהי בירת צרפת?", "כמה זה 1234 כפול 5678?", ""):     # smoke test
+            mod.prepare(q, None)
+            mod.finalize(q, "פריז")
+    except HookError as e:
+        w.close()
+        raise Refused(f"hook: {e}")
     except Refused:
+        w.close()
         raise
-    except Exception as e:     # noqa: BLE001
-        raise Refused(f"hook crashed on a smoke test: {type(e).__name__}: {e}")
     return mod

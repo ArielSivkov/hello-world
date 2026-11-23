@@ -1,9 +1,11 @@
-"""Score one genome on one arena split. Meant to run in its own process (the gate kills it on timeout).
+"""Score one genome on one arena split. Run by the gate in its own process; this process is the judge
+and never executes genome code: the hooks run in an isolated worker (rewrite/isolation.py).
 
-  python3 -m rewrite.evaluate --genome rewrite/genome/seed.py --split dev
+  python3 -m rewrite.evaluate --genome rewrite/genome/seed.py --split dev --out result.json
 
-The last stdout line is `RESULT <json>`. Per-task results are cached by (genome source, task),
-so a rerun of the same genome is free and an interrupted run resumes.
+The result is written to --out (a path the genome cannot reach), never parsed from stdout.
+Per-task results are cached by (judge fingerprint, genome source, task); `ok` is recomputed from the
+cached answer on every load, so a cache entry cannot vouch for itself.
 """
 import argparse
 import hashlib
@@ -17,38 +19,37 @@ LAB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ION = os.path.join(LAB, "ion-loop")
 sys.path[:0] = [ION, LAB]
 
-from ion import agent                     # noqa: E402
-from ion.agent import Config              # noqa: E402
-from arena.run import load as load_split  # noqa: E402
-from arena.check import correct           # noqa: E402
-from rewrite import sandbox               # noqa: E402
+from ion import agent                          # noqa: E402
+from ion.agent import Config                   # noqa: E402
+from arena.run import load as load_split       # noqa: E402
+from rewrite import sandbox                    # noqa: E402
+from rewrite.check_strict import correct       # noqa: E402
+from rewrite.isolation import HookWorker, HookError, HookFailed   # noqa: E402
 
 TAG = os.environ.get("ION_TAG", "qwen2.5-1.5b")
 RUNS = os.path.join(LAB, "rewrite", "runs", TAG)
+SPLITS = ("dev", "holdout", "shadow")
 
 
 def genome_id(source):
     return hashlib.sha1(source.encode()).hexdigest()[:12]
 
 
-def apply(mod):
-    """Install the genome into the agent. Returns the Config to run with."""
-    if mod.SYSTEM_EXTRA:
-        agent.BASE_PROMPT = agent.BASE_PROMPT + "\n" + mod.SYSTEM_EXTRA
-        agent.BASE_PROMPT_HE = agent.BASE_PROMPT_HE + "\n" + mod.SYSTEM_EXTRA
-    return Config(**mod.CONFIG)
+def judge_id():
+    from rewrite.gate import fingerprint
+    return hashlib.sha1(json.dumps(fingerprint(), sort_keys=True).encode()).hexdigest()[:10]
 
 
-def solve(mod, cfg, task):
+def solve(worker, cfg, task):
     try:
-        q = mod.prepare(task["q"], task.get("doc"))
-    except Exception as e:     # noqa: BLE001  a crashing hook fails the task, not the run
-        return "", [("hook", f"prepare crashed: {type(e).__name__}: {e}"[:200])]
+        q = worker.call("prepare", q=task["q"], doc=task.get("doc"))
+    except HookFailed as e:     # a hook that raises fails its task, not the run
+        return "", [("hook", f"prepare failed: {e}")]
     ans, trace = agent.run(q, cfg, doc=task.get("doc"))
     try:
-        out = mod.finalize(task["q"], ans)
-    except Exception as e:     # noqa: BLE001
-        return "", trace + [("hook", f"finalize crashed: {type(e).__name__}: {e}"[:200])]
+        out = worker.call("finalize", q=task["q"], a=ans)
+    except HookFailed as e:
+        return "", trace + [("hook", f"finalize failed: {e}")]
     if q != task["q"]:
         trace = [("prepared", q[:300])] + trace
     if out != ans:
@@ -57,53 +58,75 @@ def solve(mod, cfg, task):
 
 
 def evaluate(source, split="dev", verbose=True):
-    mod = sandbox.load(source)
-    cfg = apply(mod)
-    os.makedirs(RUNS, exist_ok=True)
-    path = os.path.join(RUNS, f"{split}-{genome_id(source)}.jsonl")
-    done = {}
-    if os.path.exists(path):
-        for line in open(path, encoding="utf-8"):
-            r = json.loads(line)
-            done[r["id"]] = r
-    tasks = load_split(split)
-    with open(path, "a", encoding="utf-8") as f:
-        for t in tasks:
-            if t["id"] in done:
-                continue
-            t0 = time.time()
-            ans, trace = solve(mod, cfg, t)
-            r = {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "ok": correct(t, ans),
-                 "answer": ans, "secs": round(time.time() - t0, 1), "trace": trace}
-            done[t["id"]] = r
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-            f.flush()
-            if verbose:
-                print(f"  {'✓' if r['ok'] else '✗'} {t['id']:<14} {r['secs']:>5}s  {ans[:60]!r}", flush=True)
+    sandbox.check(source)
+    worker = HookWorker(source)          # raises HookError (refused) if the genome cannot even start
+    try:
+        cfg_dict = sandbox.validate_config(worker.config)
+        extra = sandbox.validate_extra(worker.system_extra)
+        if extra:
+            agent.BASE_PROMPT = agent.BASE_PROMPT + "\n" + extra
+            agent.BASE_PROMPT_HE = agent.BASE_PROMPT_HE + "\n" + extra
+        cfg = Config(**cfg_dict)
+        os.makedirs(RUNS, exist_ok=True)
+        path = os.path.join(RUNS, f"{split}-{judge_id()}-{genome_id(source)}.jsonl")
+        tasks = load_split(split)
+        by_id = {t["id"]: t for t in tasks}
+        done = {}
+        if os.path.exists(path):
+            for line in open(path, encoding="utf-8"):
+                r = json.loads(line)
+                if r.get("id") in by_id:
+                    r["ok"] = correct(by_id[r["id"]], r.get("answer", ""))
+                    done[r["id"]] = r
+        with open(path, "a", encoding="utf-8") as f:
+            for t in tasks:
+                if t["id"] in done:
+                    continue
+                t0 = time.time()
+                ans, trace = solve(worker, cfg, t)
+                r = {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "ok": correct(t, ans),
+                     "answer": ans, "secs": round(time.time() - t0, 1), "trace": trace}
+                done[t["id"]] = r
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+                f.flush()
+                if verbose:
+                    print(f"  {'✓' if r['ok'] else '✗'} {t['id']:<14} {r['secs']:>5}s  {ans[:60]!r}", flush=True)
+    finally:
+        worker.close()
     by, kinds = defaultdict(list), defaultdict(list)
     for t in tasks:
         r = done[t["id"]]
-        by[r["cat"]].append(r["ok"])
-        kinds[r["kind"]].append(r["ok"])
+        by[t["cat"]].append(r["ok"])
+        kinds[t.get("kind", t["cat"])].append(r["ok"])
     cats = {c: round(100 * sum(v) / len(v)) for c, v in sorted(by.items())}
-    result = {"genome": genome_id(source), "split": split,
-              "total": round(sum(cats.values()) / len(cats), 1), "cats": cats,
+    result = {"genome": genome_id(source), "split": split, "n_correct": sum(r["ok"] for r in done.values()),
+              "n_tasks": len(tasks), "total": round(sum(cats.values()) / len(cats), 1), "cats": cats,
               "kinds": {k: f"{sum(v)}/{len(v)}" for k, v in sorted(kinds.items())}}
-    if split == "dev":     # the proposer may learn from dev failures; holdout failures never leave this process
-        task_by_id = {t["id"]: t for t in tasks}
+    if split == "dev":
+        # failures the proposer may learn from: the question and what the agent did, never the expected answer
         result["failures"] = [
-            {"id": r["id"], "cat": r["cat"], "kind": r["kind"], "q": task_by_id[r["id"]]["q"][:300],
-             "expected": task_by_id[r["id"]]["answers"][:3], "got": r["answer"][:150],
-             "trace": [f"{k}: {str(v)[:160]}" for k, v in r["trace"]][-6:]}
-            for r in (done[t["id"]] for t in tasks) if not r["ok"]]
+            {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "q": t["q"][:300],
+             "got": done[t["id"]]["answer"][:150],
+             "trace": [f"{k}: {str(v)[:160]}" for k, v in done[t["id"]]["trace"]][-6:]}
+            for t in tasks if not done[t["id"]]["ok"]]
     return result
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--genome", required=True)
-    ap.add_argument("--split", default="dev", choices=["dev", "holdout"])
+    ap.add_argument("--split", default="dev", choices=SPLITS)
+    ap.add_argument("--out", help="write the result JSON here (the gate passes a private path)")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
-    res = evaluate(open(a.genome, encoding="utf-8").read(), a.split, verbose=not a.quiet)
-    print("RESULT " + json.dumps(res, ensure_ascii=False), flush=True)
+    try:
+        res = evaluate(open(a.genome, encoding="utf-8").read(), a.split, verbose=not a.quiet)
+    except sandbox.Refused as e:
+        res = {"refused": f"sandbox: {e}"}
+    except HookError as e:
+        res = {"refused": f"hook: {e}"}
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as f:
+            json.dump(res, f, ensure_ascii=False)
+    else:
+        print(json.dumps(res, ensure_ascii=False))
