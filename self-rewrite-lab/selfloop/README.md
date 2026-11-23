@@ -66,3 +66,21 @@ The bootstrap intervals cover document sampling, not training randomness.
 ```
 python -m selfloop.report runs/all runs/anchor runs/stale runs/random runs/hard
 ```
+
+## Stage 2: self-edits (prototype, not yet run on the model)
+
+`--train-on self` replaces the chosen documents by texts the incumbent model writes
+about them (`selfloop/selfedit.py`, SEAL-style "implications" prompt); `self+raw` trains
+on both; `raw` is stage 0b unchanged. Metric, prequential protocol and gate are the
+same. Every self-edit is saved to `<out>/selfedits_<t>.jsonl`, and per-document test
+scores to `<out>/scores_<t>.npz` so runs can be compared paired:
+
+```
+python -m selfloop.loop --out runs/self --anchor 0.5 --train-on self
+python -m selfloop.loop --out runs/selfraw --anchor 0.5 --train-on self+raw
+python -m selfloop.loop --out runs/fake --anchor 0.5 --train-on self --generator fake
+python -m selfloop.compare runs/selfraw runs/anchor2
+```
+
+`--generator fake` is a deterministic, model-free generator (the abstract's own
+sentences, rotated); it is used by the tests and as a "reformatting only" control.
