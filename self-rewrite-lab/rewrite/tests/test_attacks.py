@@ -223,3 +223,14 @@ def test_the_proposer_sees_only_feedback_half_scores(judge):
     res = judge(SEED, "dev")
     prompt = proposer.build_prompt(SEED, res, [], fmt="edits")
     assert json.dumps(res["feedback_cats"]) in prompt and str(res["total"]) not in prompt.split("Current policy")[0]
+
+
+def test_positive_control_is_accepted(judge):
+    """Sanhedrin case 001, takkanah 2: the judge had been tested only against cheats. A known-good, general
+    change (rewrite/genome/positive_control.py) must be accepted, or the judge is too closed to learn from."""
+    src = open(os.path.join(LAB, "rewrite", "genome", "positive_control.py"), encoding="utf-8").read()
+    assert sandbox.contains_test_answer(src, DEV_ANSWERS) is None
+    seed = judge(SEED, "dev")
+    new = judge(src, "dev")
+    keep, _, why = gate.decide(seed, new, seed)
+    assert keep, (why, new["n_correct"], new["feedback_correct"], new["blind_correct"])

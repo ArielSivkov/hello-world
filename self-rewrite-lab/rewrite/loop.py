@@ -128,6 +128,12 @@ def main(args):
                     raise
                 except Exception as e:     # noqa: BLE001  a broken candidate is a refusal, never a crash
                     new, keep, regress, why = {}, False, {}, f"loop error: {type(e).__name__}"
+                if not keep and "error" not in new:      # Sanhedrin 001, takkanah 5: record near misses
+                    g = new.get("n_correct", 0) - cur.get("n_correct", 0)
+                    f = new.get("feedback_correct", 0) - cur.get("feedback_correct", 0)
+                    broken = set(cur.get("passed", [])) - set(new.get("passed", []))
+                    row["near_miss"] = g >= 0 and f > 0 and not broken
+                    row["gate_gain"], row["feedback_gain"] = g, f
                 row.update(before=cur["total"], after=new.get("total"), cats=new.get("cats"),
                            n_correct=new.get("n_correct"), genome=new.get("genome"), regressions=regress,
                            kept=keep, why=why)
