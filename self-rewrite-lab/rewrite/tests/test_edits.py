@@ -284,5 +284,6 @@ def test_real_partial_replies_are_refused_in_full_mode_but_applied_in_edit_mode(
         sandbox.load(src)     # a004: no finalize(); a005: no CONFIG (stage 1 logged "evaluation failed")
     src, change, why = proposer.parse(reply, SEED, "edits")
     assert why is None and change.startswith("Simplif")
-    mod = sandbox.load(src)
-    assert mod.CONFIG == sandbox.load(SEED).CONFIG and mod.prepare("A B", "d") != "A B"
+    seed_cfg = sandbox.load(SEED).CONFIG
+    mod = sandbox.load(src)        # one live worker at a time: load the seed first
+    assert mod.CONFIG == seed_cfg and mod.prepare("A B", "d") != "A B"

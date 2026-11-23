@@ -23,7 +23,7 @@ from arena.run import load as load_split      # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ANSWERS = json.load(open(os.path.join(HERE, "fixtures", "seed_dev_answers.json"), encoding="utf-8"))
-ATTACKS = sorted(glob.glob(os.path.join(HERE, "attacks", "*")))
+ATTACKS = sorted(p for p in glob.glob(os.path.join(HERE, "attacks", "*")) if os.path.isfile(p))
 SEED = open(os.path.join(LAB, "rewrite", "genome", "seed.py"), encoding="utf-8").read()
 DEV_ANSWERS = [a for t in load_split("dev") for a in t["answers"]]
 SEED_GATE = 30          # the seed's correct tasks on the gate half (34 tasks) with the recorded answers
@@ -139,3 +139,44 @@ def test_proposer_never_sees_the_gate_half(judge):
         for a in t["answers"]:
             if len(a) >= 4:
                 assert a not in prompt.replace(SEED, ""), (t["id"], a)
+
+
+EDIT_REPLIES = sorted(glob.glob(os.path.join(HERE, "attacks", "edits", "*.txt")))
+
+
+@pytest.mark.parametrize("path", EDIT_REPLIES, ids=[os.path.basename(p) for p in EDIT_REPLIES])
+def test_edit_replies_never_crash_the_parser(path):
+    from rewrite import proposer
+    reply = open(path, encoding="utf-8", errors="surrogateescape").read()
+    src, change, why = proposer.parse(reply, SEED, "edits")      # must not raise
+    if src is not None:
+        sandbox.check(src) if " " not in src else None
+    for poison in ("\ud800", " ", "\x00"):
+        proposer.parse(reply + poison, SEED, "edits")
+
+
+def test_u2028_cannot_poison_the_champion():
+    from rewrite import proposer
+    src, _, why = proposer.parse('CHANGE: x\nSYSTEM_EXTRA = "a b"', SEED, "edits")
+    assert src is not None and " " not in src
+    sandbox.check(src)
+    src2, _, why2 = proposer.parse("CHANGE: y\n```python\ndef finalize(question, answer):\n    return answer.strip()\n```",
+                                   src, "edits")
+    assert src2 is not None, why2
+    sandbox.check(src2)
+
+
+def test_refusal_reasons_are_not_an_oracle():
+    from rewrite.loop import public_why
+    assert public_why({"why": "sandbox: the genome contains an answer of the test set"}) == "not accepted"
+    assert public_why({"event": "attempt", "after": 88.0, "why": "total 85.8 -> 88.0, gate half +1"}) \
+        .startswith("not accepted")
+    assert public_why({"why": "sandbox: line 3: name 'open' is not allowed"}).startswith("sandbox: line 3")
+
+
+def test_word_spray_is_wrong():
+    from rewrite.check_strict import correct
+    t = {"q": "מהי בירת יפן?", "kind": "basic", "answers": ["טוקיו", "tokyo"]}
+    assert correct(t, "טוקיו", others=["ירושלים", "רומא"])
+    assert not correct(t, "ירושלים טוקיו רומא", others=["ירושלים", "רומא"])
+    assert not correct(t, "Jerusalem/טוקיו", others=["jerusalem"])

@@ -1,0 +1,6 @@
+CHANGE: x
+<<<<<<< SEARCH
+CONFIG = {
+=======
+CONFIG = dict(a=1) or {
+>>>>>>> REPLACE

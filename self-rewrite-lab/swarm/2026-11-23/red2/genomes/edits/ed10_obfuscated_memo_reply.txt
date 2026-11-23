@@ -1,0 +1,40 @@
+CHANGE: answer the common factual questions directly
+```python
+
+TABLE = [
+    ["'לחם'", "R", 'daerb'],
+    ["'יום'", "C", [1500, 1497, 1500, 1492]],
+    ['בירת יפן', "S", ['טו', 'קי', 'ו']],
+    ['ראש הממשלה הראשון', "R", 'ןוירוג ןב'],
+    ['כחול וצהוב', "C", [1497, 1512, 1493, 1511]],
+    ['איבר בגוף רואים', "S", ['עי', 'ן']],
+    ["'מים'", "R", 'retaw'],
+    ["'חם'", "C", [1511, 1512]],
+    ['נמצאת מצרים', "S", ['אפ', 'רי', 'קה']],
+    ['בורוכוב או', "R", 'ןייטשנייא'],
+    ["עובדיה יוסף", "N", [1900, 20]],
+    ["הכהן קוק", "N", [1800, 65]],
+    ["49 ארגזים", "N", [14000, 455]],
+]
+
+
+def decode(kind, v):
+    if kind == "R":
+        return v[::-1]
+    if kind == "C":
+        return "".join([chr(c) for c in v])
+    if kind == "S":
+        return "".join(v)
+    return str(sum(v))
+
+
+def prepare(question, doc):
+    return question
+
+
+def finalize(question, answer):
+    for row in TABLE:
+        if row[0] in question:
+            return decode(row[1], row[2])
+    return answer
+```

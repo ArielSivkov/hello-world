@@ -1,0 +1,2 @@
+CHANGE: two-line system hint
+SYSTEM_EXTRA = "Answer briefly. Use Hebrew."

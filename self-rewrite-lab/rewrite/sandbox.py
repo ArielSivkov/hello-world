@@ -42,9 +42,17 @@ def check(source):
     except (MemoryError, RecursionError, ValueError) as e:     # deep nesting overflows the parser
         raise Refused(f"genome cannot be parsed: {type(e).__name__}")
 
-    for node in tree.body:     # module level: declarations only, no side effects at import time
-        ok = isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.Assign, ast.AnnAssign)) or (
+    for node in tree.body:     # module level: declarations only, no code runs at import time
+        ok = isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef)) or (
             isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str))
+        if isinstance(node, ast.FunctionDef) and node.decorator_list:
+            raise Refused(f"line {node.lineno}: decorators are not allowed")
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+            try:
+                ast.literal_eval(node.value)       # constants only: no call runs at import time
+                ok = True
+            except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+                raise Refused(f"line {node.lineno}: module-level values must be plain constants")
         if not ok:
             raise Refused(f"line {node.lineno}: only imports, assignments and functions are allowed at module level")
 
@@ -182,16 +190,23 @@ class _Loaded:
         return self._w.call("finalize", q=question, a=answer)
 
 
+_LIVE = []
+
+
 def load(source):
-    """Check a genome and start it in the isolated worker (never in this process). Raises Refused."""
+    """Check a genome and start it in the isolated worker (never in this process). Raises Refused.
+    Only one loaded genome lives at a time: workers run as uid nobody under a small process limit."""
     import atexit
     from rewrite.isolation import HookWorker, HookError
     check(source)
+    while _LIVE:
+        _LIVE.pop().close()
     try:
         w = HookWorker(source)
     except HookError as e:
         raise Refused(f"hook: {e}")
     atexit.register(w.close)
+    _LIVE.append(w)
     try:
         mod = _Loaded(w)
         for q in ("מהי בירת צרפת?", "כמה זה 1234 כפול 5678?", ""):     # smoke test

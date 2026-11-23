@@ -29,6 +29,18 @@ RUN = os.environ.get("REWRITE_RUN", f"{TAG}-strict")     # the judge changed on 
 SEED = os.path.join(LAB, "rewrite", "genome", "seed.py")
 
 
+def public_why(row):
+    """What the next proposer is told about a refusal. Coarse on purpose: the red team (r2, ed9/ed9b) used
+    "contains an answer of the test set" and "+k tasks" as an oracle for dev answers. Format and syntax
+    errors are passed on, since the proposer needs them to write a valid reply."""
+    why = str(row.get("why", ""))
+    if why.startswith("edit:") or (why.startswith("sandbox:") and "answer of the test set" not in why):
+        return why
+    if row.get("event") == "attempt" and "after" in row and row.get("after") is not None:
+        return "not accepted: the judge found no clear improvement"
+    return "not accepted"
+
+
 def short_diff(a, b, limit=60):
     d = list(difflib.unified_diff(a.splitlines(), b.splitlines(), "champion", "candidate", lineterm="", n=1))
     return "\n".join(d[:limit]) + ("\n..." if len(d) > limit else "")
@@ -64,7 +76,7 @@ def main(args):
     prev = [json.loads(l) for l in open(hist_path, encoding="utf-8")] if os.path.exists(hist_path) else []
     start_gen = 1 + max([r.get("gen", 0) for r in prev] or [0])
     accepted_n = sum(1 for r in prev if r.get("event") == "attempt" and r.get("kept"))
-    refused = [{"change": r["change"], "why": r["why"]} for r in prev if r.get("event") == "attempt" and not r["kept"]]
+    refused = [{"change": r["change"], "why": public_why(r)} for r in prev if r.get("event") == "attempt" and not r["kept"]]
     log({"event": "start", "gen": start_gen - 1, "genome": cur["genome"], "dev": cur["total"], "cats": cur["cats"]})
 
     for gen in range(start_gen, start_gen + args.generations):
@@ -81,7 +93,7 @@ def main(args):
                     no_reply = f"proposer error: {e}"[:300]
                 break      # on a retry, keep the parse error of the first reply
             name = f"a{gen:03d}.txt" if k == 0 else f"a{gen:03d}-retry{k}.txt"
-            open(os.path.join(out, "attempts", name), "w", encoding="utf-8").write(reply)
+            open(os.path.join(out, "attempts", name), "w", encoding="utf-8").write(proposer.scrub(reply))
             src, change, why = proposer.parse(reply, champ, args.format)
             if src is not None:
                 break
@@ -123,7 +135,7 @@ def main(args):
                     open(champ_path, "w", encoding="utf-8").write(src)
                     open(os.path.join(out, f"g{accepted_n:03d}.py"), "w", encoding="utf-8").write(src)
         if not row["kept"]:
-            refused.append({"change": row["change"], "why": row["why"]})
+            refused.append({"change": row["change"], "why": public_why(row)})
         log(row)
 
     gate.verify(judge)

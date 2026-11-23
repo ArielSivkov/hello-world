@@ -1,0 +1,5 @@
+CHANGE: strip the question
+```python
+def prepare(question, doc):
+    return question.strip()
+```

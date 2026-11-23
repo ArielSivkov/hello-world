@@ -32,7 +32,7 @@ STR_CHOICES = {
     "decompose": ["", "llm", "entities", "entities-dated", "entities-facts"],
     "extract": ["llm", "facts-only", "structured"],
 }
-TOOL_NAMES = ["calc", "web_search", "fetch", "doc_search"]
+TOOL_NAMES = ["calc", "web_search", "doc_search"]   # same as sandbox.ALLOWED_TOOLS (no network tool)
 MAX_SYSTEM_EXTRA = 2000
 
 
@@ -166,7 +166,7 @@ _COMPACT_ITEM = re.compile(r"([a-z][a-z0-9_]*)=(\[[^\]]*\]|\"[^\"]*\"|[^,\s]+)")
 
 def _compact_config(code):
     """The packed 'CONFIG:' view of edit-mode prompts, copied back by the model -> (ops, remaining code)."""
-    lines = code.splitlines()
+    lines = code.split("\n")
     starts = [k for k, l in enumerate(lines) if l.strip() == "CONFIG:"]
     if not starts:
         return [], code
@@ -197,7 +197,7 @@ def _python_ops_strict(code, i):
         tree = ast.parse(code)
     except SyntaxError as e:
         raise EditError(f"python block {i}: syntax error: {e.msg} (line {e.lineno})")
-    lines = code.splitlines()
+    lines = code.split("\n")
     out = []
     for node in tree.body:
         seg = "\n".join(lines[node.lineno - 1 - len(getattr(node, "decorator_list", []) or []):node.end_lineno])
@@ -248,7 +248,7 @@ def _py(v):
     if isinstance(v, bool) or v is None:
         return repr(v)
     if isinstance(v, str):
-        return json.dumps(v, ensure_ascii=False)
+        return json.dumps(v, ensure_ascii=True)
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_py(x) for x in v) + "]"
     return repr(v)
@@ -328,12 +328,12 @@ def _search_replace(source, search, replace, n):
         raise EditError(f"SEARCH block {n} is empty")
     count = source.count(search)
     if count == 0:     # tolerate trailing-space / indentation-width noise: match line by line, stripped
-        src_lines, pat = source.splitlines(), [l.strip() for l in search.strip("\n").splitlines()]
+        src_lines, pat = source.split("\n"), [l.strip() for l in search.strip("\n").split("\n")]
         hits = [k for k in range(len(src_lines) - len(pat) + 1)
                 if [l.strip() for l in src_lines[k:k + len(pat)]] == pat]
         if len(hits) == 1:
             k = hits[0]
-            new = src_lines[:k] + replace.rstrip("\n").splitlines() + src_lines[k + len(pat):]
+            new = src_lines[:k] + replace.rstrip("\n").split("\n") + src_lines[k + len(pat):]
             return "\n".join(new) + "\n"
         count = len(hits)
     if count == 0:
@@ -396,14 +396,14 @@ def apply(champion, ops, fields=None):
         elif kind == "import":
             imports.append(op["code"])
 
-    lines = src.splitlines()
+    lines = src.split("\n")
     edits = []     # (start_line, end_line, new_text) with 1-based inclusive lines; insert when end < start
     if new_cfg != cfg:
         if cfg_node is None:
             raise EditError("the policy file has no CONFIG to change")
         edits.append((cfg_node.lineno, cfg_node.end_lineno, render_config(new_cfg)))
     if system_extra is not None:
-        text = "SYSTEM_EXTRA = " + json.dumps(system_extra, ensure_ascii=False)
+        text = "SYSTEM_EXTRA = " + json.dumps(system_extra, ensure_ascii=True)
         if ("assign", "SYSTEM_EXTRA") in spans:
             a, b = spans[("assign", "SYSTEM_EXTRA")]
             edits.append((a, b, text))
@@ -462,7 +462,7 @@ def compact(source, width=100):
         cur = f"{cur}, {item}" if cur else item
     if cur:
         rows.append(cur)
-    lines = source.splitlines()
+    lines = source.split("\n")
     body = [l for l in lines[:node.lineno - 1] if not l.startswith("#")]
     shown = "\n".join(body).strip("\n")
     shown = (shown + "\n" if shown else "") + "CONFIG:\n" + "\n".join("  " + r for r in rows)

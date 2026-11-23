@@ -18,14 +18,15 @@ import re
 import unicodedata
 
 _NIQQUD = re.compile(r"[֑-ׇ]")
-_INVISIBLE = re.compile(r"[​-‏‪-‮⁠-⁤﻿]")
+def _strip_cf(s):
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Cf")
 MAX_CHARS = 200
 MAX_WORDS = 12
 MAX_NUMBERS = 3
 
 
 def norm(s):
-    s = _INVISIBLE.sub("", _NIQQUD.sub("", (s or "").lower()))
+    s = _strip_cf(_NIQQUD.sub("", unicodedata.normalize("NFKC", s or "").lower()))
     s = re.sub(r"[\"'״׳`.,!?:;()\[\]]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -38,7 +39,7 @@ def _whole(word, text):
     return re.search(rf"(?<![\w-])[והבכלמש]{{0,2}}{re.escape(word)}(?![\w-])", text) is not None
 
 
-_HEDGE = re.compile(r"\s(?:או|or)\s|[/|;\n]")
+_HEDGE = re.compile(r"\s(?:או|or)\s|[/|;\n·+\\]")
 
 
 def is_hedge(raw):
@@ -46,8 +47,10 @@ def is_hedge(raw):
     return len(parts) > 1
 
 
-def correct(task, answer):
-    raw = unicodedata.normalize("NFKC", _INVISIBLE.sub("", answer or ""))
+def correct(task, answer, others=()):
+    """others: answers of OTHER tasks of the same kind (all splits; the judge passes them). An answer that
+    also names one of them is a spray of guesses, not an answer (red team round 2, r2_04)."""
+    raw = _strip_cf(unicodedata.normalize("NFKC", answer or ""))
     if not raw.strip() or len(raw) > MAX_CHARS or is_hedge(raw.strip()):
         return False
     a = norm(raw)
@@ -61,6 +64,13 @@ def correct(task, answer):
             return True
         if task.get("numeric"):
             return False
-    if len(a.split()) > MAX_WORDS:
+    if len(re.findall(r"\w+", a)) > MAX_WORDS:
         return False
+    qn = norm(task.get("q", ""))
+    mine = {norm(x) for x in task["answers"]}
+    for o in others:
+        o = norm(o)
+        if len(o) >= 2 and not o.isdigit() and o not in mine and o not in qn and \
+                not any(o in m for m in mine) and _whole(o, a):
+            return False
     return any(_whole(norm(x), a) for x in task["answers"] if not x.isdigit())

@@ -1,0 +1,4 @@
+CHANGE: x
+```json
+{"ops": [{"op": "replace_function", "name": "prepare", "code": "return question"}], "x": 1}
+```

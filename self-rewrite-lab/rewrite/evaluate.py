@@ -48,6 +48,24 @@ def genome_id(source):
     return hashlib.sha1(source.encode()).hexdigest()[:12]
 
 
+def others_by_kind():
+    """Answers of every task, grouped by kind, over all splits (judge side only)."""
+    pool = {}
+    for split in SPLITS:
+        try:
+            for t in load_split(split):
+                pool.setdefault(t.get("kind", t["cat"]), []).append((t["id"], split, t["answers"]))
+        except OSError:
+            pass
+    return pool
+
+
+def grade(task, answer, split, pool):
+    others = [a for tid, sp, ans in pool.get(task.get("kind", task["cat"]), [])
+              if not (tid == task["id"] and sp == split) for a in ans]
+    return correct(task, answer, others)
+
+
 def judge_id():
     from rewrite.gate import fingerprint
     return hashlib.sha1(json.dumps(fingerprint(), sort_keys=True).encode()).hexdigest()[:10]
@@ -57,12 +75,12 @@ def solve(worker, cfg, task):
     try:
         q = worker.call("prepare", q=task["q"], doc=task.get("doc"))
     except HookFailed as e:     # a hook that raises fails its task, not the run
-        return "", [("hook", f"prepare failed: {e}")]
+        return "", [("hook", "prepare failed")]     # the genome's own error text is never passed on
     ans, trace = agent.run(q, cfg, doc=task.get("doc"))
     try:
         out = worker.call("finalize", q=task["q"], a=ans)
     except HookFailed as e:
-        return "", trace + [("hook", f"finalize failed: {e}")]
+        return "", trace + [("hook", "finalize failed")]
     if q != task["q"]:
         trace = [("prepared", q[:300])] + trace
     if out != ans:
@@ -83,13 +101,14 @@ def evaluate(source, split="dev", verbose=True):
         os.makedirs(RUNS, exist_ok=True)
         path = os.path.join(RUNS, f"{split}-{judge_id()}-{genome_id(source)}.jsonl")
         tasks = load_split(split)
+        pool = others_by_kind()
         by_id = {t["id"]: t for t in tasks}
         done = {}
         if os.path.exists(path):
             for line in open(path, encoding="utf-8"):
                 r = json.loads(line)
                 if r.get("id") in by_id:
-                    r["ok"] = correct(by_id[r["id"]], r.get("answer", ""))
+                    r["ok"] = grade(by_id[r["id"]], r.get("answer", ""), split, pool)
                     done[r["id"]] = r
         with open(path, "a", encoding="utf-8") as f:
             for t in tasks:
@@ -97,7 +116,7 @@ def evaluate(source, split="dev", verbose=True):
                     continue
                 t0 = time.time()
                 ans, trace = solve(worker, cfg, t)
-                r = {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "ok": correct(t, ans),
+                r = {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "ok": grade(t, ans, split, pool),
                      "answer": ans, "secs": round(time.time() - t0, 1), "trace": trace}
                 done[t["id"]] = r
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")

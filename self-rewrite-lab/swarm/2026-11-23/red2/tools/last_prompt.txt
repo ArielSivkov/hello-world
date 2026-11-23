@@ -1,0 +1,60 @@
+You improve the policy of a small Hebrew question-answering agent. An automatic judge
+scores every version and keeps yours only if the total score rises and no category drops by more than 10.
+
+The policy has four parts. CONFIG holds the agent's switches. SYSTEM_EXTRA is text added to the agent's
+system prompt. prepare(question, doc) returns the question text the agent sees. finalize(question, answer)
+returns the final answer; the judge expects ONE short answer (hedges and lists of guesses are wrong).
+
+Do NOT write the whole file. Write only your change:
+line 1:  CHANGE: <one short sentence>
+then one or more of these:
+  SET <config key> = <new value>        (one line per switch)
+  SYSTEM_EXTRA = "<text in English or Hebrew>"
+  a ```python block with a complete new def prepare(question, doc) or def finalize(question, answer)
+Python rules: imports only from re, math, json, unicodedata, string, collections, itertools, functools.
+No while, no lambda, no class, no print, no names starting with _.
+
+Example of a reply in the right format (write your own change, not this one):
+CHANGE: cut the answer at the first newline
+```python
+def finalize(question, answer):
+    return answer.strip().split("\n")[0]
+```
+
+Make ONE small change that should fix some of the failures below without breaking other categories.
+
+Current scores (percent correct per category): {"basic": 55, "calc": 92, "longdoc": 100, "multistep": 94, "web": 88}; total 85.8.
+
+Current policy:
+```python
+CONFIG:
+  tools=["calc"], fewshot=True, plan=False, verify=False, max_steps=4, doc_chars=2500, auto_rag=True
+  auto_web=True, tool_guard=True, decompose="entities-facts", temperature=0.0, notes_facts=True
+  notes_chars=450, notes_n=2, calc_on_notes=True, rag_k=3, rag_neighbors=0, sys_hebrew=False
+  brief=False, extract_hebrew=False, extract="structured", combine_hint=False, combine_name=True
+  notes_dated_only=False, notes_facts_only=False, rag_phrase=True
+
+SYSTEM_EXTRA = ""
+
+
+def prepare(question, doc):
+    return question
+
+
+def finalize(question, answer):
+    return answer
+```
+
+Failures (weakest categories first):
+- [basic/basic] question: תרגם לאנגלית את המילה 'לחם'.
+  the agent answered (wrong): "'aliment'"
+  last steps: model: x
+- [basic/basic] question: מה ההפך של המילה 'יום'?
+  the agent answered (wrong): 'ההפך של המילה "יום" הוא "יממה".'
+  last steps: model: x
+- [basic/basic] question: מהי בירת יפן?
+  the agent answered (wrong): 'Jerusalem.'
+  last steps: model: x
+- [basic/basic] question: מי היה ראש הממשלה הראשון של מדינת ישראל?
+  the agent answered (wrong): 'ראש הממשלה הראשון של מדינת ישראל היה יצחק רבין.'
+  last steps: model: x

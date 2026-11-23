@@ -80,6 +80,11 @@ def finalize(question, answer):
 Make ONE small change that should fix some of the failures below without breaking other categories."""
 
 
+def _clean(s, n):
+    s = "".join(ch for ch in str(s) if ch.isprintable() or ch == " ")
+    return s[:n]
+
+
 def build_prompt(source, result, refused, n_fail=None, fmt="full"):
     edit = fmt == "edits"
     n_fail = n_fail if n_fail is not None else (4 if edit else 6)
@@ -97,11 +102,11 @@ def build_prompt(source, result, refused, n_fail=None, fmt="full"):
         for f in fails:
             # the expected answer is never shown: a proposer that sees it can memorise the test set
             lines.append(f"- [{f['cat']}/{f['kind']}] question: {f['q']}\n  the agent answered (wrong): "
-                         f"{f['got']!r}\n  last steps: " + " || ".join(f["trace"][-3:])[:trace_chars])
+                         f"{_clean(f['got'], 150)!r}\n  last steps: " + _clean(" || ".join(f["trace"][-3:]), trace_chars))
         parts.append("\nFailures (weakest categories first):\n" + "\n".join(lines))
     if refused:
         parts.append("\nRecent attempts the judge refused (do not repeat them):\n" +
-                     "\n".join(f"- {r['change']}: {r['why']}" for r in refused[-5:]))
+                     "\n".join(f"- {_clean(r['change'], 160)}: {_clean(r['why'], 200)}" for r in refused[-5:]))
     return "\n".join(parts)
 
 
@@ -127,8 +132,23 @@ def extract(reply):
     return src, (m.group(1).strip()[:160] if m else "(no CHANGE line)")
 
 
+def scrub(text):
+    """Model replies may hold lone surrogates or Unicode line separators (red team r2: U+2028 poisoned the
+    champion; a surrogate crashed the attempt log)."""
+    text = (text or "").encode("utf-8", "replace").decode("utf-8")
+    return text.replace("\r\n", "\n").replace("\u2028", "\n").replace("\u2029", "\n").replace("\x85", "\n")
+
+
 def parse(reply, champion, fmt="full"):
-    """Returns (source, change, why): source is the complete candidate file, or None with `why` set."""
+    """Returns (source, change, why): source is the complete candidate file, or None with `why` set.
+    Never raises: a reply that breaks the parser is a refused reply, not a crashed loop."""
+    try:
+        return _parse(scrub(reply), champion, fmt)
+    except Exception as e:     # noqa: BLE001
+        return None, "(unparseable)", f"edit: the reply could not be parsed ({type(e).__name__})"
+
+
+def _parse(reply, champion, fmt):
     if fmt == "full":
         src, change = extract(reply)
         return (src, change, None) if src is not None else (None, "(unparseable)", change)

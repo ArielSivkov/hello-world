@@ -32,7 +32,9 @@ def test_seed_loads():
     ("def g(x):\n    return x.__class__\n", "'__class__'"),
     ("def g(x):\n    return eval(x)\n", "'eval'"),
     ("def g(x):\n    while True:\n        pass\n", "while"),
-    ("g = lambda x: x\n", "Lambda"),
+    ("g = lambda x: x\n", "Lambda|plain constants"),
+    ("X = sum(range(10 ** 12))\n", "plain constants"),
+    ("@functools.lru_cache\ndef g(x):\n    return x\n", "decorators"),
     ("def g(x):\n    return getattr(x, 'y')\n", "'getattr'"),
     ("def g(x):\n    global CONFIG\n    return x\n", "Global"),
 ])
@@ -79,7 +81,7 @@ def test_hooks_are_applied_and_a_crash_fails_only_that_task(monkeypatch):
         assert seen["q"].endswith("ענה בשנה בלבד.") and ans == "התשובה: 1879."
         assert trace[0][0] == "prepared" and trace[-1][0] == "finalized"
         ans, trace = evaluate.solve(w, None, {"q": "קרוס"})
-        assert ans == "" and "finalize failed: IndexError" in trace[-1][1]
+        assert ans == "" and trace[-1] == ("hook", "finalize failed")    # no genome text is passed on
         ans, _ = evaluate.solve(w, None, {"q": "שוב?"})                  # the worker lives on
         assert ans == "התשובה: 1879."
     finally:
