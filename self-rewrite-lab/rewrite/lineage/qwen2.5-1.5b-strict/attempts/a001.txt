@@ -1,0 +1,4 @@
+line 1:
+CHANGE: SET CONFIG['tool_guard'] = True
+
+This change will add the tool guard to the policy, which is a common technique used in question-answering agents to prevent them from answering questions that are not suitable for their training data.

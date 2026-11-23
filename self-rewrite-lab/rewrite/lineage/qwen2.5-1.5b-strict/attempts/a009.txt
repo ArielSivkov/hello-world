@@ -1,0 +1,1 @@
+SET CONFIG: max_steps=8

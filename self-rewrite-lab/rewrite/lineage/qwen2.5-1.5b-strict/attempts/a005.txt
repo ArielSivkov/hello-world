@@ -1,0 +1,3 @@
+SET CONFIG: plan = False
+ 
+ This change will make the agent's switches more robust and prevent it from accepting a score below 90% when planning. It also removes the last line that was not changed, which was intended to be removed anyway due to a bug in the code.

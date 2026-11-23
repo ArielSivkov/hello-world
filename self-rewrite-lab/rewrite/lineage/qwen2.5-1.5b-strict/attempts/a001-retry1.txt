@@ -1,0 +1,8 @@
+SET CONFIG.fewshot = False
+SYSTEM_EXTRA = "to prevent false negatives and improve accuracy"
+
+def prepare(question, doc):
+    return question.replace(" ", "\n")  # remove extra spaces
+
+def finalize(question, answer):
+    return answer

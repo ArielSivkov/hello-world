@@ -1,0 +1,5 @@
+CHANGE: reduce the number of characters in the finalize answer
+```python
+def finalize(question, answer):
+    return len(answer) > 10 and answer.split("\n")[0] == answer.split("\n")[-2]
+```

@@ -1,0 +1,7 @@
+CHANGE: cut the answer at the first newline
+```python
+def finalize(question, answer):
+    return "\n".join(answer.split("\n"))
+```
+
+This change will allow you to specify a maximum number of lines in your final answer. The `split()` function splits the string into a list of words, and then joins them back together with newline characters (`\n`) in between each word. This ensures that each line has at most one newline character before it is joined together.

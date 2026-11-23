@@ -1,0 +1,4 @@
+```python
+def finalize(question, answer):
+    return unicodedata.normalize('NFC', answer).strip()
+```

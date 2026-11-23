@@ -1,0 +1,6 @@
+```python
+def finalize(question, answer):
+    return answer.strip().split("\n")[0]
+```
+
+This change reduces the number of characters in the final answer by splitting it on newline characters and returning only the first part. This should help increase the score across all categories while maintaining consistency with previous policy changes.

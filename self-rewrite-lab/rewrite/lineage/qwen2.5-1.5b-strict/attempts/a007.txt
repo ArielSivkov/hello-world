@@ -1,0 +1,4 @@
+CHANGE: add a switch to control the length of the final answer.
+```python
+def finalize(question, answer):
+    return len(answer.strip().split("\n")) < 2 and question or answer or ''
