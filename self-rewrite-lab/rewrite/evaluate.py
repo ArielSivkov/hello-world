@@ -79,7 +79,7 @@ def solve(worker, cfg, task, decoy=DECOY):
     """decoy: the model's own answer to a DIFFERENT task. The genome cannot tell it from a real answer, and
     it is not a correct answer, so nothing leaks; a policy that is still right with it ignores the model."""
     try:
-        q = worker.call("prepare", q=task["q"], doc=task.get("doc"))
+        q = worker.call("prepare", q=task["q"], doc=task.get("doc"))[:len(task["q"]) + 400]
     except HookFailed as e:     # a hook that raises fails its task, not the run
         return "", [("hook", "prepare failed")], ""     # the genome's own error text is never passed on
     ans, trace = agent.run(q, cfg, doc=task.get("doc"))
@@ -161,6 +161,10 @@ def evaluate(source, split="dev", verbose=True):
         # failures the proposer may learn from, from the FEEDBACK half only: the question and what the agent
         # did, never the expected answer
         result["feedback_correct"] = sum(done[t["id"]]["ok"] for t in shown)
+        fb = defaultdict(list)
+        for t in shown:
+            fb[t["cat"]].append(done[t["id"]]["ok"])
+        result["feedback_cats"] = {c: round(100 * sum(v) / len(v)) for c, v in sorted(fb.items())}
         result["failures"] = [
             {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "q": t["q"][:300],
              "got": done[t["id"]]["answer"][:150],

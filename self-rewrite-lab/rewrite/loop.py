@@ -36,9 +36,7 @@ def public_why(row):
     why = str(row.get("why", ""))
     if why.startswith("edit:") or (why.startswith("sandbox:") and "answer of the test set" not in why):
         return why
-    if row.get("event") == "attempt" and "after" in row and row.get("after") is not None:
-        return "not accepted: the judge found no clear improvement"
-    return "not accepted"
+    return "not accepted"      # crash, refusal or no improvement look the same (red team r3: one bit a round)
 
 
 def short_diff(a, b, limit=60):
@@ -65,8 +63,12 @@ def main(args):
 
     judge = gate.fingerprint()
     champ = open(champ_path, encoding="utf-8").read()
-    cur = gate.score(champ, "dev", args.timeout, runlog)
-    if "error" in cur:
+    for attempt in range(3):      # a transient failure (e.g. the worker cannot start) is retried, not fatal
+        cur = gate.score(champ, "dev", args.timeout, runlog)
+        if "error" not in cur:
+            break
+        time.sleep(30)
+    else:
         sys.exit(f"champion does not evaluate: {cur['error']}")
     seed_src = open(SEED, encoding="utf-8").read()
     seed_dev = cur if champ == seed_src else gate.score(seed_src, "dev", args.timeout, runlog)

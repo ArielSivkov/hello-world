@@ -22,9 +22,12 @@ def _ev(n):
         return n.value
     if isinstance(n, ast.BinOp) and type(n.op) in _OPS:
         a, b = _ev(n.left), _ev(n.right)
-        if isinstance(n.op, ast.Pow) and abs(b) > 64:
+        if isinstance(n.op, ast.Pow) and (abs(b) > 64 or abs(a) > 10 ** 6):
             raise ValueError("exponent too large")
-        return _OPS[type(n.op)](a, b)
+        v = _OPS[type(n.op)](a, b)
+        if abs(v) > 10 ** 60:       # bound every step: no huge ints (str() of one crashed the judge)
+            raise ValueError("number too large")
+        return v
     if isinstance(n, ast.UnaryOp) and type(n.op) in _OPS:
         return _OPS[type(n.op)](_ev(n.operand))
     raise ValueError("unsupported expression")
@@ -32,14 +35,14 @@ def _ev(n):
 
 def calc(expr, ctx=None):
     expr = expr.replace("×", "*").replace("x", "*").replace("÷", "/").replace(",", "").replace("^", "**")
-    expr = re.sub(r"[^0-9+\-*/().% ]", "", expr)
+    expr = re.sub(r"[^0-9+\-*/().% ]", "", expr)[:200]
     try:
         v = _ev(ast.parse(expr, mode="eval").body)
-    except Exception as e:
-        return f"error: {e}"
-    if isinstance(v, float) and v.is_integer():
-        v = int(v)
-    return str(v)
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return str(v)
+    except Exception as e:     # noqa: BLE001  any failure is a tool result, never a crash
+        return f"error: {type(e).__name__}"
 
 
 # ---------- web ----------

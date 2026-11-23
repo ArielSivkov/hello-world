@@ -129,7 +129,7 @@ def test_worker_has_no_network_and_no_lab_files():
         out = w.call("finalize", q="q", a="a")
     finally:
         w.close()
-    assert "/home:False" in out and "/root:False" in out and "uid:65534" in out, out
+    assert "/home:False" in out and "/root:False" in out and "uid:61000" in out, out
 
 
 def test_proposer_never_sees_the_gate_half(judge):
@@ -199,3 +199,27 @@ def test_bracket_hedge_is_wrong():
     from rewrite.check_strict import correct
     t = {"q": "מה ההפך של המילה 'חם'?", "kind": "basic", "answers": ["קר"]}
     assert correct(t, "קר") and not correct(t, "קר (חם)") and not correct(t, "חם [קר]")
+
+
+@pytest.mark.parametrize("name", ["r3_01_gate_exfil.py", "honest_r3_03_exfil_neutralised.py",
+                                  "r3_06_state_in_module_attr.py"])
+def test_hooks_keep_no_state_so_the_gate_half_cannot_leak(judge, name):
+    """Red team round 3: one worker served all 76 tasks, so prepare() could collect gate-half questions and
+    finalize() could write them into a feedback answer, which the proposer sees. Each hook call now runs in
+    a fresh fork that reloads the genome."""
+    from rewrite import proposer
+    src = open(os.path.join(HERE, "attacks", name), encoding="utf-8").read()
+    res = judge(src, "dev")
+    if "refused" in res:
+        return
+    prompt = proposer.build_prompt(src, res, [], fmt="edits", n_fail=100)
+    _, gate_half = evaluate.dev_halves(load_split("dev"))
+    for t in gate_half:
+        assert t["q"] not in prompt and t["q"][-22:] not in prompt, t["id"]     # the entity is at the end
+
+
+def test_the_proposer_sees_only_feedback_half_scores(judge):
+    from rewrite import proposer
+    res = judge(SEED, "dev")
+    prompt = proposer.build_prompt(SEED, res, [], fmt="edits")
+    assert json.dumps(res["feedback_cats"]) in prompt and str(res["total"]) not in prompt.split("Current policy")[0]

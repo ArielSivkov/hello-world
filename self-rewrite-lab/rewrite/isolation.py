@@ -13,6 +13,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PY = os.path.realpath(sys.executable)
 STDLIB = os.path.dirname(os.__file__)                  # e.g. /usr/local/lib/python3.13
 LIMITS = {"as": 512 << 20, "cpu": 900, "nproc": 8, "fsize": 0}   # worst case ~8 x 512MB
+# A uid of its own: nobody is shared with other programs on the host, and nproc counts per uid (red team r3:
+# other nobody processes made honest genomes fail to start).
+WORKER_UID = int(os.environ.get("REWRITE_WORKER_UID", "61000"))
 CALL_TIMEOUT = 2.0      # seconds per prepare/finalize call
 INIT_TIMEOUT = 10.0
 MAX_LINE = 1 << 16
@@ -40,7 +43,7 @@ def _reap_worker_zombies():
             continue
         f = dict(line.split(":", 1) for line in st.splitlines() if ":" in line)
         if f.get("PPid", "").strip() == me and f.get("State", "").strip().startswith("Z") and \
-                f.get("Uid", "").split()[:1] == ["65534"]:
+                f.get("Uid", "").split()[:1] == [str(WORKER_UID)]:
             try:
                 os.waitpid(int(pid), os.WNOHANG)
             except ChildProcessError:
@@ -92,9 +95,9 @@ def command():
     for name in ("hookworker.py", "sandbox.py"):
         files += ["--ro-bind", os.path.join(HERE, name), f"{worker_dir}/{name}"]
     lim = [f"--{k}={v}" for k, v in LIMITS.items()]
-    return (["setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "--inh-caps=-all",
+    return (["setpriv", f"--reuid={WORKER_UID}", f"--regid={WORKER_UID}", "--clear-groups", "--inh-caps=-all",
              "prlimit", *lim, "--", "bwrap", "--unshare-all", "--unshare-user", "--disable-userns",
-             "--die-with-parent", "--new-session", "--uid", "65534", "--gid", "65534", "--clearenv",
+             "--die-with-parent", "--new-session", "--uid", str(WORKER_UID), "--gid", str(WORKER_UID), "--clearenv",
              "--setenv", "PYTHONHASHSEED", "0", *binds, *files, "--proc", "/proc", "--dev", "/dev",
              "--chdir", worker_dir, PY, "-I", "-S", f"{worker_dir}/hookworker.py"])
 
@@ -183,7 +186,7 @@ class HookWorker:
         self.p.wait()
         for _ in range(20):
             _reap_worker_zombies()
-            if not any(open(f"/proc/{q}/status").read().find("Uid:\t65534") >= 0
+            if not any(open(f"/proc/{q}/status").read().find(f"Uid:\t{WORKER_UID}") >= 0
                        for q in os.listdir("/proc") if q.isdigit() and _is_child(q)):
                 break
             time.sleep(0.05)

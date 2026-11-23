@@ -23,6 +23,47 @@ import sandbox  # noqa: E402  (the static checker and the reduced builtins; it i
 MAX_OUT = 4000
 
 
+def fresh_call(msg):
+    """Run one hook in a forked child that loads the genome afresh: no state (module dicts, attributes set
+    on imported modules, caches) survives from one task to the next (red team r3_01: gate questions seen in
+    prepare() were carried to feedback answers and so into the proposer prompt)."""
+    rfd, wfd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.close(rfd)
+            mod = types.ModuleType("genome")
+            mod.__dict__["__builtins__"] = sandbox._builtins()
+            exec(SOURCE[0], mod.__dict__)
+            if msg["op"] == "prepare":
+                r = mod.prepare(msg["q"], msg.get("doc"))
+            else:
+                r = mod.finalize(msg["q"], msg["a"])
+            out = {"r": r[:MAX_OUT]} if isinstance(r, str) else {"e": f"{msg['op']}() must return str"}
+        except BaseException as e:     # noqa: BLE001
+            out = {"e": type(e).__name__}
+        try:
+            os.write(wfd, json.dumps(out, ensure_ascii=True).encode()[:1 << 15])
+        finally:
+            os._exit(0)
+    os.close(wfd)
+    data = b""
+    for _ in range(64):
+        chunk = os.read(rfd, 1 << 15)
+        if not chunk:
+            break
+        data += chunk
+    os.close(rfd)
+    os.waitpid(pid, 0)
+    try:
+        return json.loads(data)
+    except ValueError:
+        return {"e": "hook crashed"}
+
+
+SOURCE = [None]
+
+
 def main():
     proto = os.fdopen(os.dup(1), "w", encoding="utf-8")      # the only channel back to the judge
     devnull = open(os.devnull, "w")
@@ -46,7 +87,8 @@ def main():
                 sandbox.check(msg["source"])
                 mod = types.ModuleType("genome")
                 mod.__dict__["__builtins__"] = sandbox._builtins()
-                exec(compile(msg["source"], "<genome>", "exec"), mod.__dict__)
+                SOURCE[0] = compile(msg["source"], "<genome>", "exec")
+                exec(SOURCE[0], mod.__dict__)
                 cfg, extra = getattr(mod, "CONFIG", None), getattr(mod, "SYSTEM_EXTRA", None)
                 if not isinstance(cfg, dict) or not isinstance(extra, str):
                     send({"e": "CONFIG must be a dict and SYSTEM_EXTRA a str"})
@@ -54,12 +96,8 @@ def main():
                 send({"ok": True, "CONFIG": json.loads(json.dumps(cfg)), "SYSTEM_EXTRA": extra[:MAX_OUT]})
             elif mod is None:
                 send({"e": "not initialised"})
-            elif msg["op"] == "prepare":
-                r = mod.prepare(msg["q"], msg.get("doc"))
-                send({"r": r[:MAX_OUT]} if isinstance(r, str) else {"e": "prepare() must return str"})
-            elif msg["op"] == "finalize":
-                r = mod.finalize(msg["q"], msg["a"])
-                send({"r": r[:MAX_OUT]} if isinstance(r, str) else {"e": "finalize() must return str"})
+            elif msg["op"] in ("prepare", "finalize"):
+                send(fresh_call(msg))
             else:
                 send({"e": "unknown op"})
         except sandbox.Refused as e:

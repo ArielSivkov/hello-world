@@ -89,12 +89,12 @@ def build_prompt(source, result, refused, n_fail=None, fmt="full"):
     edit = fmt == "edits"
     n_fail = n_fail if n_fail is not None else (4 if edit else 6)
     trace_chars = 300 if edit else 500
-    cats = result["cats"]
+    cats = result.get("feedback_cats", result["cats"])   # the gate half is never described to the proposer
     weakest = sorted(cats, key=lambda c: cats[c])
     fails = sorted(result.get("failures", []), key=lambda f: weakest.index(f["cat"]))[:n_fail]
     shown = edits.compact(source) if edit else source
     parts = [INSTRUCTIONS_EDITS if edit else INSTRUCTIONS,
-             f"\nCurrent scores (percent correct per category): {json.dumps(cats)}; total {result['total']}.",
+             f"\nCurrent scores (percent correct per category): {json.dumps(cats)}.",
              "\nCurrent policy:\n```python\n" + shown.strip() + "\n```" if edit else
              "\nCurrent policy file:\n```python\n" + source.strip() + "\n```"]
     if fails:
