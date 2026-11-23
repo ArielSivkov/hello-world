@@ -122,3 +122,10 @@ def test_timeout_kills_a_hanging_genome(monkeypatch):
                   "    return question")
     res = gate.score(hang, "dev", timeout=3)
     assert "timeout" in res["error"]
+
+
+def test_proposer_pool(monkeypatch):
+    monkeypatch.delenv("REWRITE_PROPOSERS", raising=False)
+    assert proposer.proposers() == [("self", proposer.URL)]
+    monkeypatch.setenv("REWRITE_PROPOSERS", "qwen=http://a:1/v1, llama=http://b:2/v1")
+    assert proposer.proposers() == [("qwen", "http://a:1/v1"), ("llama", "http://b:2/v1")]

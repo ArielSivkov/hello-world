@@ -1,0 +1,14 @@
+```python
+# CHANGE: Simplify preparation function to reduce complexity and improve accuracy.
+
+def prepare(question, doc):
+    if doc:
+        return f"{question} ({doc})"
+    else:
+        return question
+
+def finalize(question, answer):
+    return answer
+```
+
+This change simplifies the `prepare` function by returning a formatted string that combines the original question with any available document. This reduces complexity without significantly impacting accuracy or breaking other categories. The `finalize` function remains unchanged as it was not previously scoring poorly and does not need to be altered for this fix.

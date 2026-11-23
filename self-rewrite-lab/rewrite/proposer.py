@@ -13,6 +13,20 @@ import requests
 URL = os.environ.get("REWRITE_PROPOSER_URL", os.environ.get("ION_BASE_URL", "http://localhost:8080/v1"))
 MODEL = os.environ.get("REWRITE_PROPOSER_MODEL", os.environ.get("ION_MODEL", "local"))
 
+
+def proposers():
+    """REWRITE_PROPOSERS="qwen=http://localhost:8080/v1,llama=http://localhost:8081/v1" → [(name, url)].
+    Generation g uses proposer g % n, so different model families take turns rewriting the same genome.
+    Unset → one proposer: the agent's own model."""
+    spec = os.environ.get("REWRITE_PROPOSERS", "").strip()
+    if not spec:
+        return [("self", URL)]
+    out = []
+    for part in spec.split(","):
+        name, _, url = part.strip().partition("=")
+        out.append((name.strip(), url.strip()))
+    return out
+
 INSTRUCTIONS = """You are improving the policy file of a small Hebrew question-answering agent.
 The agent is a fixed program; this policy file is the only part you may change. An automatic judge
 scores every version on a test set and keeps your version only if the total score rises and no
@@ -52,8 +66,8 @@ def build_prompt(source, result, refused, n_fail=6):
     return "\n".join(parts)
 
 
-def ask(prompt, seed, temperature=0.7, max_tokens=1800, timeout=900):
-    r = requests.post(f"{URL}/chat/completions", timeout=timeout, json={
+def ask(prompt, seed, temperature=0.7, max_tokens=1800, timeout=900, url=None):
+    r = requests.post(f"{url or URL}/chat/completions", timeout=timeout, json={
         "model": MODEL, "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens, "temperature": temperature, "seed": seed})
     if r.status_code != 200:

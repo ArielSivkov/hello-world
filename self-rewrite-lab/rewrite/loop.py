@@ -61,10 +61,12 @@ def main(args):
     log({"event": "start", "gen": start_gen - 1, "genome": cur["genome"], "dev": cur["total"], "cats": cur["cats"]})
 
     for gen in range(start_gen, start_gen + args.generations):
-        row = {"event": "attempt", "gen": gen, "kept": False}
+        pool = proposer.proposers()
+        who, url = pool[gen % len(pool)]
+        row = {"event": "attempt", "gen": gen, "proposer": who, "kept": False}
         try:
             reply = proposer.ask(proposer.build_prompt(champ, cur, refused), seed=gen,
-                                 temperature=args.temperature)
+                                 temperature=args.temperature, url=url)
         except Exception as e:     # noqa: BLE001
             row.update(change="(no reply)", why=f"proposer error: {e}"[:300])
             log(row)
