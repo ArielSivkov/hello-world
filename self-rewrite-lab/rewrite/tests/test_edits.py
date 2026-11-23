@@ -296,3 +296,26 @@ def test_set_config_prefix_as_llama_writes_it():
     for reply in ("CHANGE: x\nSET CONFIG: max_steps=6", 'CHANGE: x\nSET CONFIG["max_steps"] = 6'):
         src, _, why = proposer.parse(reply, SEED, "edits")
         assert why is None and '"max_steps": 6' in src
+
+
+def test_a_dead_proposer_does_not_burn_generations(tmp_path, monkeypatch):
+    monkeypatch.setattr(loop.time, "sleep", lambda s: None)
+    replies = []
+
+    def dead(*a, **k):
+        raise ConnectionError("Connection refused")
+    lab = tmp_path / "lab"
+    (lab / "rewrite" / "genome").mkdir(parents=True)
+    shutil.copy(os.path.join(LAB, "rewrite", "genome", "seed.py"), lab / "rewrite" / "genome" / "seed.py")
+    monkeypatch.setattr(loop, "LAB", str(lab))
+    monkeypatch.setattr(loop, "SEED", str(lab / "rewrite" / "genome" / "seed.py"))
+    monkeypatch.setattr(loop, "RUN", "test")
+    monkeypatch.setattr(proposer, "ask", dead)
+    monkeypatch.setattr(loop.gate, "score", lambda *a, **k: {"total": 50.0, "cats": {"a": 50}, "genome": "g",
+                                                             "n_correct": 5})
+
+    class A:
+        generations, tolerance, temperature, timeout, margin, format, retries = 8, 10, 0.7, 10, 2, "edits", 1
+    loop.main(A)
+    rows = [json.loads(l) for l in open(lab / "rewrite" / "lineage" / "test" / "history.jsonl", encoding="utf-8")]
+    assert [r["event"] for r in rows] == ["start", "aborted"] and rows[-1]["gen"] == 1

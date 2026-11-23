@@ -29,6 +29,27 @@ RUN = os.environ.get("REWRITE_RUN", f"{TAG}-strict")     # the judge changed on 
 SEED = os.path.join(LAB, "rewrite", "genome", "seed.py")
 
 
+class ProposerDown(Exception):
+    pass
+
+
+def ask_patiently(prompt, seed, temperature, url, tries=5, wait=60):
+    """A proposer server that is down (run 3: the 7B server was killed for memory) must not burn generations
+    in seconds. Retry with a pause; if it stays down, stop the run instead of logging empty generations."""
+    last = None
+    for i in range(tries):
+        try:
+            return proposer.ask(prompt, seed=seed, temperature=temperature, url=url)
+        except (OSError, ConnectionError) as e:
+            last = e
+        except Exception as e:     # noqa: BLE001  requests wraps connection failures in its own types
+            if "Connection" not in type(e).__name__ and "connection" not in str(e).lower():
+                raise
+            last = e
+        time.sleep(wait)
+    raise ProposerDown(f"proposer unreachable after {tries} tries: {last}"[:300])
+
+
 def public_why(row):
     """What the next proposer is told about a refusal. Coarse on purpose: the red team (r2, ed9/ed9b) used
     "contains an answer of the test set" and "+k tasks" as an oracle for dev answers. Format and syntax
@@ -81,71 +102,77 @@ def main(args):
     refused = [{"change": r["change"], "why": public_why(r)} for r in prev if r.get("event") == "attempt" and not r["kept"]]
     log({"event": "start", "gen": start_gen - 1, "genome": cur["genome"], "dev": cur["total"], "cats": cur["cats"]})
 
-    for gen in range(start_gen, start_gen + args.generations):
-        pool = proposer.proposers()
-        who, url = pool[gen % len(pool)]
-        row = {"event": "attempt", "gen": gen, "proposer": who, "kept": False, "format": args.format}
-        prompt = proposer.build_prompt(champ, cur, refused, fmt=args.format)
-        src, no_reply = None, None
-        for k in range(1 + args.retries):     # a reply that cannot be parsed is retried with the error
-            try:
-                reply = proposer.ask(prompt, seed=gen + 1000 * k, temperature=args.temperature, url=url)
-            except Exception as e:     # noqa: BLE001
-                if k == 0:
-                    no_reply = f"proposer error: {e}"[:300]
-                break      # on a retry, keep the parse error of the first reply
-            name = f"a{gen:03d}.txt" if k == 0 else f"a{gen:03d}-retry{k}.txt"
-            open(os.path.join(out, "attempts", name), "w", encoding="utf-8").write(proposer.scrub(reply))
-            src, change, why = proposer.parse(reply, champ, args.format)
-            if src is not None:
-                break
-            row.setdefault("parse_errors", []).append(why)
-            prompt = proposer.retry_prompt(prompt, why)
-        if no_reply:     # as before: a server error is logged but is not a refused proposal
-            row.update(change="(no reply)", why=no_reply)
-            log(row)
-            continue
-        row["change"] = change
-        if src is None:
-            row["why"] = why
-        elif src.strip() == champ.strip():
-            row["why"] = "identical to the champion"
-        else:
-            row["diff"] = short_diff(champ, src)
-            try:
-                sandbox.check(src)
-                hit = sandbox.contains_test_answer(src, dev_answers)
-                if hit:
-                    raise sandbox.Refused(hit)
-            except sandbox.Refused as e:
-                row["why"] = f"sandbox: {e}"
-            else:
+    try:
+        for gen in range(start_gen, start_gen + args.generations):
+            pool = proposer.proposers()
+            who, url = pool[gen % len(pool)]
+            row = {"event": "attempt", "gen": gen, "proposer": who, "kept": False, "format": args.format}
+            prompt = proposer.build_prompt(champ, cur, refused, fmt=args.format)
+            src, no_reply = None, None
+            for k in range(1 + args.retries):     # a reply that cannot be parsed is retried with the error
                 try:
-                    new = gate.score(src, "dev", args.timeout, runlog)
-                    gate.verify(judge)
-                    keep, regress, why = gate.decide(cur, new, seed_dev, args.tolerance, args.margin)
-                except gate.JudgeChanged:
+                    reply = ask_patiently(prompt, gen + 1000 * k, args.temperature, url)
+                except ProposerDown:
                     raise
-                except Exception as e:     # noqa: BLE001  a broken candidate is a refusal, never a crash
-                    new, keep, regress, why = {}, False, {}, f"loop error: {type(e).__name__}"
-                if not keep and "error" not in new:      # Sanhedrin 001, takkanah 5: record near misses
-                    g = new.get("n_correct", 0) - cur.get("n_correct", 0)
-                    f = new.get("feedback_correct", 0) - cur.get("feedback_correct", 0)
-                    broken = set(cur.get("passed", [])) - set(new.get("passed", []))
-                    row["near_miss"] = g >= 0 and f > 0 and not broken
-                    row["gate_gain"], row["feedback_gain"] = g, f
-                row.update(before=cur["total"], after=new.get("total"), cats=new.get("cats"),
-                           n_correct=new.get("n_correct"), genome=new.get("genome"), regressions=regress,
-                           kept=keep, why=why)
-                if keep:
-                    accepted_n += 1
-                    champ, cur = src, new
-                    open(champ_path, "w", encoding="utf-8").write(src)
-                    open(os.path.join(out, f"g{accepted_n:03d}.py"), "w", encoding="utf-8").write(src)
-        if not row["kept"]:
-            refused.append({"change": row["change"], "why": public_why(row)})
-        log(row)
+                except Exception as e:     # noqa: BLE001
+                    if k == 0:
+                        no_reply = f"proposer error: {e}"[:300]
+                    break      # on a retry, keep the parse error of the first reply
+                name = f"a{gen:03d}.txt" if k == 0 else f"a{gen:03d}-retry{k}.txt"
+                open(os.path.join(out, "attempts", name), "w", encoding="utf-8").write(proposer.scrub(reply))
+                src, change, why = proposer.parse(reply, champ, args.format)
+                if src is not None:
+                    break
+                row.setdefault("parse_errors", []).append(why)
+                prompt = proposer.retry_prompt(prompt, why)
+            if no_reply:     # as before: a server error is logged but is not a refused proposal
+                row.update(change="(no reply)", why=no_reply)
+                log(row)
+                continue
+            row["change"] = change
+            if src is None:
+                row["why"] = why
+            elif src.strip() == champ.strip():
+                row["why"] = "identical to the champion"
+            else:
+                row["diff"] = short_diff(champ, src)
+                try:
+                    sandbox.check(src)
+                    hit = sandbox.contains_test_answer(src, dev_answers)
+                    if hit:
+                        raise sandbox.Refused(hit)
+                except sandbox.Refused as e:
+                    row["why"] = f"sandbox: {e}"
+                else:
+                    try:
+                        new = gate.score(src, "dev", args.timeout, runlog)
+                        gate.verify(judge)
+                        keep, regress, why = gate.decide(cur, new, seed_dev, args.tolerance, args.margin)
+                    except gate.JudgeChanged:
+                        raise
+                    except Exception as e:     # noqa: BLE001  a broken candidate is a refusal, never a crash
+                        new, keep, regress, why = {}, False, {}, f"loop error: {type(e).__name__}"
+                    if not keep and "error" not in new:      # Sanhedrin 001, takkanah 5: record near misses
+                        g = new.get("n_correct", 0) - cur.get("n_correct", 0)
+                        f = new.get("feedback_correct", 0) - cur.get("feedback_correct", 0)
+                        broken = set(cur.get("passed", [])) - set(new.get("passed", []))
+                        row["near_miss"] = g >= 0 and f > 0 and not broken
+                        row["gate_gain"], row["feedback_gain"] = g, f
+                    row.update(before=cur["total"], after=new.get("total"), cats=new.get("cats"),
+                               n_correct=new.get("n_correct"), genome=new.get("genome"), regressions=regress,
+                               kept=keep, why=why)
+                    if keep:
+                        accepted_n += 1
+                        champ, cur = src, new
+                        open(champ_path, "w", encoding="utf-8").write(src)
+                        open(os.path.join(out, f"g{accepted_n:03d}.py"), "w", encoding="utf-8").write(src)
+            if not row["kept"]:
+                refused.append({"change": row["change"], "why": public_why(row)})
+            log(row)
 
+    except ProposerDown as err:
+        log({"event": "aborted", "gen": gen, "why": str(err)})   # resumable: the next run starts at this gen
+        return
     gate.verify(judge)
     end = {"event": "end", "gen": start_gen + args.generations - 1, "accepted_total": accepted_n,
            "dev": cur["total"], "cats": cur["cats"], "dev_seed": seed_dev["total"]}

@@ -1,0 +1,1 @@
+Invalid: the 7B proposer server was OOM-killed on its first request and all 8 generations logged 'no reply' within seconds. Fixed: servers run without mmap (7B peak 6.5GB instead of ~10GB) and the loop now waits for a dead proposer and stops (event 'aborted') instead of burning generations.
