@@ -1,0 +1,997 @@
+diff -ruN -x runs -x lineage -x __pycache__ /home/user/hello-world/self-rewrite-lab/rewrite/edits.py lab/rewrite/edits.py
+--- /home/user/hello-world/self-rewrite-lab/rewrite/edits.py	1970-01-01 00:00:00.000000000 +0000
++++ lab/rewrite/edits.py	2026-11-23 00:01:17.121605468 +0000
+@@ -0,0 +1,469 @@
++"""Edit-based proposals: the proposer sends a small change, the harness applies it to the champion.
++
++A 1.5B model cannot reliably return a complete file (it echoes it unchanged, drops required functions,
++or forgets the CHANGE line). In the edit format it only writes what changes; this module turns that
++into a complete candidate file, which then goes through the unchanged sandbox and gate.
++
++Accepted pieces in one reply (any mix, applied in this order):
++
++  CHANGE: <one sentence>                         (anywhere; '# CHANGE:' inside a code block also works)
++  <<<<<<< SEARCH / ======= / >>>>>>> REPLACE      exact text replacement (aider style), applied first
++  SET <key> = <value>                            one CONFIG value, outside code blocks
++  SYSTEM_EXTRA = "<text>"                        outside code blocks
++  ```json {"ops": [...]} ```                     {"op": "set_config", "key", "value"} |
++                                                 {"op": "set_system_extra", "text"} |
++                                                 {"op": "replace_function", "code"}
++  ```python ... ```                              each top-level def replaces the function of that name
++                                                 (or adds a helper); CONFIG = {...} / CONFIG["k"] = v /
++                                                 SYSTEM_EXTRA = "..." set values; imports are added.
++
++Anything malformed raises EditError with a short reason meant to be shown back to the proposer.
++Nothing here decides acceptance: the result is checked by sandbox.check and scored by the gate.
++"""
++import ast
++import json
++import re
++import textwrap
++
++REQUIRED_ARGS = {"prepare": 2, "finalize": 2}
++# Valid values of the string switches (from ion-loop/ion/agent.py); a wrong one is refused here with a
++# useful message instead of silently behaving like the default inside the agent.
++STR_CHOICES = {
++    "decompose": ["", "llm", "entities", "entities-dated", "entities-facts"],
++    "extract": ["llm", "facts-only", "structured"],
++}
++TOOL_NAMES = ["calc", "web_search", "fetch", "doc_search"]
++MAX_SYSTEM_EXTRA = 2000
++
++
++class EditError(Exception):
++    pass
++
++
++# ----------------------------------------------------------------------------------------- parsing
++
++_FENCE = re.compile(r"```[ \t]*([A-Za-z0-9_+-]*)[ \t]*\n(.*?)(?:```|\Z)", re.S)
++_SR = re.compile(r"^[ \t]*<{5,9}[ \t]*SEARCH[ \t]*\n(.*?)^[ \t]*={5,9}[ \t]*\n(.*?)^[ \t]*>{5,9}[ \t]*REPLACE[ \t]*$",
++                 re.S | re.M)
++_CHANGE = re.compile(r"^[ \t>*_-]*(?:#\s*)?\**CHANGE\**\s*:\**\s*(.+?)\s*$", re.M | re.I)
++_SET = re.compile(r"^[ \t>*-]*SET\s+`?([A-Za-z_][A-Za-z0-9_]*)`?\s*(?:=|:|\bto\b)\s*(.+?)\s*$", re.M)
++_BARE = re.compile(r"^[ \t>*-]*`?([a-z][a-z0-9_]*)`?\s*=\s*(\S.*?)\s*$", re.M)
++_SYS = re.compile(r"^[ \t>*-]*`?SYSTEM_EXTRA`?\s*[=:]\s*(.+?)\s*$", re.M)
++
++
++def _literal(text):
++    """A value written by the model: Python literal, JSON literal, or None if neither."""
++    text = text.strip().rstrip(",;").strip().strip("`")
++    for parse in (ast.literal_eval, json.loads):
++        try:
++            return True, parse(text)
++        except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
++            pass
++    low = text.lower()
++    if low in ("true", "false"):
++        return True, low == "true"
++    head = re.split(r"\s+(?:#|\(|--|because\b)", text, maxsplit=1)[0].strip()     # "5  # more passages"
++    if head != text:
++        return _literal(head)
++    return False, text
++
++
++def parse(reply):
++    """Split a reply into (change, ops). ops is a list of dicts in application order."""
++    if not reply or not reply.strip():
++        raise EditError("empty reply")
++    m = _CHANGE.search(reply)
++    change = m.group(1).strip().strip("*`").strip()[:160] if m else None
++
++    ops = []
++    for search, replace in _SR.findall(reply):
++        ops.append({"op": "search_replace", "search": search, "replace": replace})
++    rest = _SR.sub("", reply)
++
++    blocks = []
++    def take(mt):
++        blocks.append((mt.group(1).lower(), mt.group(2)))
++        return "\n"
++    outside = _FENCE.sub(take, rest)
++
++    for key, raw in _SET.findall(outside):
++        ok, val = _literal(raw)
++        ops.append({"op": "set_config", "key": key, "value": val, "raw": not ok})
++    for key, raw in _BARE.findall(outside):     # "rag_k = 5" without SET: used only if it is a CONFIG key
++        if key != "SYSTEM_EXTRA":
++            ok, val = _literal(raw)
++            if ok:
++                ops.append({"op": "maybe_set", "key": key, "value": val})
++    for raw in _SYS.findall(outside):
++        ok, val = _literal(raw)
++        ops.append({"op": "set_system_extra", "text": val if ok else raw})
++
++    for i, (lang, body) in enumerate(blocks, 1):
++        if lang != "json" and _SET.search(body):     # SET lines written inside a code block
++            for key, raw in _SET.findall(body):
++                ok, val = _literal(raw)
++                ops.append({"op": "set_config", "key": key, "value": val, "raw": not ok})
++            body = _SET.sub("", body)
++            if lang not in ("python", "py", "python3"):
++                for raw in _SYS.findall(body):
++                    ok, val = _literal(raw)
++                    ops.append({"op": "set_system_extra", "text": val if ok else raw})
++                continue
++        if not body.strip():
++            continue
++        if lang == "json" or (not lang and body.lstrip()[:1] in ("{", "[")):
++            ops.extend(_json_ops(body, i))
++        elif lang in ("", "python", "py", "python3"):
++            ops.extend(_python_ops(body, i))
++        # other languages (```diff, ```text ...) are ignored
++    return change, ops
++
++
++def _json_ops(body, i):
++    try:
++        data = json.loads(body)
++    except json.JSONDecodeError as e:
++        raise EditError(f"json block {i}: invalid JSON ({e.msg}, line {e.lineno})")
++    if isinstance(data, dict) and "ops" in data:
++        data = data["ops"]
++    elif isinstance(data, dict):     # {"CONFIG": {...}, "SYSTEM_EXTRA": "..."} shape
++        out = []
++        for k, v in (data.get("CONFIG") or {}).items():
++            out.append({"op": "set_config", "key": k, "value": v})
++        if "SYSTEM_EXTRA" in data:
++            out.append({"op": "set_system_extra", "text": data["SYSTEM_EXTRA"]})
++        if not out and not set(data) <= {"change"}:
++            raise EditError(f"json block {i}: expected {{\"ops\": [...]}}")
++        return out
++    if not isinstance(data, list):
++        raise EditError(f"json block {i}: expected a list of operations")
++    out = []
++    for j, op in enumerate(data, 1):
++        kind = op.get("op") if isinstance(op, dict) else None
++        if kind in ("set_config", "set"):
++            if "key" not in op or "value" not in op:
++                raise EditError(f"json block {i}, op {j}: set_config needs 'key' and 'value'")
++            out.append({"op": "set_config", "key": op["key"], "value": op["value"]})
++        elif kind == "set_system_extra":
++            out.append({"op": "set_system_extra", "text": op.get("text", op.get("value"))})
++        elif kind in ("replace_function", "replace_body"):
++            code = op.get("code") or op.get("body")
++            if not isinstance(code, str):
++                raise EditError(f"json block {i}, op {j}: replace_function needs 'code'")
++            if not code.lstrip().startswith("def ") and op.get("name"):
++                code = f"def {op['name']}{_SIGS.get(op['name'], '(x)')}:\n" + textwrap.indent(textwrap.dedent(code), "    ")
++            out.extend(_python_ops(code, f"{i}.{j}"))
++        else:
++            raise EditError(f"json block {i}, op {j}: unknown op {kind!r}")
++    return out
++
++
++_SIGS = {"prepare": "(question, doc)", "finalize": "(question, answer)"}
++
++
++_COMPACT_ITEM = re.compile(r"([a-z][a-z0-9_]*)=(\[[^\]]*\]|\"[^\"]*\"|[^,\s]+)")
++
++
++def _compact_config(code):
++    """The packed 'CONFIG:' view of edit-mode prompts, copied back by the model -> (ops, remaining code)."""
++    lines = code.splitlines()
++    starts = [k for k, l in enumerate(lines) if l.strip() == "CONFIG:"]
++    if not starts:
++        return [], code
++    k = starts[0]
++    end = k + 1
++    while end < len(lines) and lines[end].startswith((" ", "\t")) and lines[end].strip():
++        end += 1
++    ops = []
++    for row in lines[k + 1:end]:
++        for key, raw in _COMPACT_ITEM.findall(row):
++            ok, val = _literal(raw)
++            ops.append({"op": "set_config", "key": key, "value": val, "raw": not ok})
++    return ops, "\n".join(lines[:k] + lines[end:])
++
++
++def _python_ops(body, i):
++    code = textwrap.dedent(body).strip("\n")
++    if not code.strip():
++        return []
++    compact_ops, code = _compact_config(code)
++    return compact_ops + _python_ops_strict(code, i)
++
++
++def _python_ops_strict(code, i):
++    if not code.strip():
++        return []
++    try:
++        tree = ast.parse(code)
++    except SyntaxError as e:
++        raise EditError(f"python block {i}: syntax error: {e.msg} (line {e.lineno})")
++    lines = code.splitlines()
++    out = []
++    for node in tree.body:
++        seg = "\n".join(lines[node.lineno - 1 - len(getattr(node, "decorator_list", []) or []):node.end_lineno])
++        if isinstance(node, ast.FunctionDef):
++            want = REQUIRED_ARGS.get(node.name)
++            if want is not None and len(node.args.args) != want:
++                raise EditError(f"{node.name}() must take exactly {want} arguments: def {node.name}{_SIGS[node.name]}")
++            out.append({"op": "def", "name": node.name, "code": seg})
++        elif isinstance(node, (ast.Import, ast.ImportFrom)):
++            out.append({"op": "import", "code": seg})
++        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
++            t = node.targets[0]
++            if isinstance(t, ast.Name) and t.id == "CONFIG":
++                try:
++                    cfg = ast.literal_eval(node.value)
++                except ValueError:
++                    raise EditError(f"python block {i}: CONFIG must be a plain dict literal")
++                if not isinstance(cfg, dict):
++                    raise EditError(f"python block {i}: CONFIG must be a dict")
++                out.extend({"op": "set_config", "key": k, "value": v} for k, v in cfg.items())
++            elif (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) and t.value.id == "CONFIG"):
++                try:
++                    key, val = ast.literal_eval(t.slice), ast.literal_eval(node.value)
++                except ValueError:
++                    raise EditError(f"python block {i}: CONFIG[...] = needs a literal key and value")
++                out.append({"op": "set_config", "key": key, "value": val})
++            elif isinstance(t, ast.Name) and t.id == "SYSTEM_EXTRA":
++                try:
++                    out.append({"op": "set_system_extra", "text": ast.literal_eval(node.value)})
++                except ValueError:
++                    raise EditError(f"python block {i}: SYSTEM_EXTRA must be a plain string literal")
++            elif isinstance(t, ast.Name):
++                out.append({"op": "assign", "name": t.id, "code": seg})
++            else:
++                raise EditError(f"python block {i}, line {node.lineno}: unsupported assignment")
++        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
++            continue     # docstring / stray string
++        else:
++            raise EditError(f"python block {i}, line {node.lineno}: only def, imports and assignments are "
++                            f"allowed, got {type(node).__name__}")
++    return out
++
++
++# ----------------------------------------------------------------------------------------- applying
++
++def _py(v):
++    """Render a CONFIG value as Python source in the seed's style."""
++    if isinstance(v, bool) or v is None:
++        return repr(v)
++    if isinstance(v, str):
++        return json.dumps(v, ensure_ascii=False)
++    if isinstance(v, (list, tuple)):
++        return "[" + ", ".join(_py(x) for x in v) + "]"
++    return repr(v)
++
++
++def render_config(cfg, indent="    "):
++    return "CONFIG = {\n" + "".join(f"{indent}{json.dumps(k)}: {_py(v)},\n" for k, v in cfg.items()) + "}"
++
++
++def check_value(key, value, current, fields):
++    """Raise EditError if `value` is not a sensible value for CONFIG[key]; return the normalized value."""
++    if key not in fields:
++        close = [f for f in fields if f.startswith(key[:4])][:3]
++        raise EditError(f"unknown CONFIG key '{key}'" + (f" (did you mean {', '.join(close)}?)" if close else ""))
++    kind = fields[key]
++    if kind is bool:
++        if not isinstance(value, bool):
++            raise EditError(f"CONFIG['{key}'] must be True or False, got {value!r}")
++    elif kind is int:
++        if isinstance(value, bool) or not isinstance(value, int):
++            if isinstance(value, float) and value.is_integer():
++                value = int(value)
++            else:
++                raise EditError(f"CONFIG['{key}'] must be a whole number, got {value!r}")
++        if not 0 <= value <= 20000:
++            raise EditError(f"CONFIG['{key}'] = {value} is out of range")
++    elif kind is float:
++        if isinstance(value, bool) or not isinstance(value, (int, float)):
++            raise EditError(f"CONFIG['{key}'] must be a number, got {value!r}")
++        value = float(value)
++    elif kind is str:
++        if not isinstance(value, str):
++            raise EditError(f"CONFIG['{key}'] must be a string, got {value!r}")
++        if key in STR_CHOICES and value not in STR_CHOICES[key]:
++            raise EditError(f"CONFIG['{key}'] must be one of {STR_CHOICES[key]}, got {value!r}")
++    elif kind is list:
++        if isinstance(value, str):
++            value = [value]
++        if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
++            raise EditError(f"CONFIG['{key}'] must be a list of strings, got {value!r}")
++        if key == "tools":
++            bad = [x for x in value if x not in TOOL_NAMES]
++            if bad:
++                raise EditError(f"unknown tools {bad}; the tools are {TOOL_NAMES}")
++    return value
++
++
++def config_types():
++    """CONFIG key -> python type, from the agent's Config dataclass (read only)."""
++    import dataclasses
++    from ion.agent import Config
++    names = {"bool": bool, "int": int, "float": float, "str": str, "list": list}
++    out = {}
++    for f in dataclasses.fields(Config):
++        t = f.type if isinstance(f.type, type) else names.get(str(f.type), str)
++        out[f.name] = t
++    return out
++
++
++def _top_level(source):
++    tree = ast.parse(source)
++    spans = {}
++    for node in tree.body:
++        start = node.lineno - len(getattr(node, "decorator_list", []) or [])
++        if isinstance(node, ast.FunctionDef):
++            spans[("def", node.name)] = (start, node.end_lineno)
++        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
++            spans[("assign", node.targets[0].id)] = (start, node.end_lineno)
++        elif isinstance(node, (ast.Import, ast.ImportFrom)):
++            spans.setdefault(("import", None), (start, node.end_lineno))
++            spans[("last_import", None)] = (start, node.end_lineno)
++    return tree, spans
++
++
++def _search_replace(source, search, replace, n):
++    if not search.strip():
++        raise EditError(f"SEARCH block {n} is empty")
++    count = source.count(search)
++    if count == 0:     # tolerate trailing-space / indentation-width noise: match line by line, stripped
++        src_lines, pat = source.splitlines(), [l.strip() for l in search.strip("\n").splitlines()]
++        hits = [k for k in range(len(src_lines) - len(pat) + 1)
++                if [l.strip() for l in src_lines[k:k + len(pat)]] == pat]
++        if len(hits) == 1:
++            k = hits[0]
++            new = src_lines[:k] + replace.rstrip("\n").splitlines() + src_lines[k + len(pat):]
++            return "\n".join(new) + "\n"
++        count = len(hits)
++    if count == 0:
++        raise EditError(f"SEARCH block {n} does not match the policy file (copy the lines exactly)")
++    if count > 1:
++        raise EditError(f"SEARCH block {n} matches {count} places; include more lines to make it unique")
++    return source.replace(search, replace, 1)
++
++
++def apply(champion, ops, fields=None):
++    """Apply ops to the champion source. Returns the candidate source (may equal the champion)."""
++    fields = fields if fields is not None else config_types()
++    src = champion
++    n = 0
++    for op in ops:
++        if op["op"] == "search_replace":
++            n += 1
++            src = _search_replace(src, op["search"], op["replace"], n)
++    try:
++        tree, spans = _top_level(src)
++    except SyntaxError as e:
++        raise EditError(f"after SEARCH/REPLACE the file has a syntax error: {e.msg} (line {e.lineno})")
++
++    cfg_node = next((nd for nd in tree.body if isinstance(nd, ast.Assign) and len(nd.targets) == 1
++                     and isinstance(nd.targets[0], ast.Name) and nd.targets[0].id == "CONFIG"), None)
++    cfg = ast.literal_eval(cfg_node.value) if cfg_node is not None else {}
++    new_cfg = dict(cfg)
++    system_extra = None
++    defs, assigns, imports = {}, {}, []
++    for op in ops:
++        kind = op["op"]
++        if kind == "maybe_set":
++            if op["key"] not in fields:
++                continue
++            kind = "set_config"
++        elif kind == "assign" and op["name"] in fields and ("assign", op["name"]) not in spans:
++            ok, val = _literal(op["code"].split("=", 1)[1])     # "rag_k = 5" inside a python block
++            if not ok:
++                raise EditError(f"{op['name']} = ...: write a literal value, e.g. SET {op['name']} = 5")
++            op = {"op": "set_config", "key": op["name"], "value": val}
++            kind = "set_config"
++        if kind == "set_config":
++            key = op["key"]
++            if not isinstance(key, str):
++                raise EditError(f"CONFIG key must be a string, got {key!r}")
++            val = op["value"]
++            if op.get("raw") and fields.get(key) is not str:
++                raise EditError(f"SET {key}: cannot read the value {val!r}")
++            new_cfg[key] = check_value(key, val, cfg.get(key), fields)
++        elif kind == "set_system_extra":
++            if not isinstance(op["text"], str):
++                raise EditError("SYSTEM_EXTRA must be a string")
++            if len(op["text"]) > MAX_SYSTEM_EXTRA:
++                raise EditError(f"SYSTEM_EXTRA is longer than {MAX_SYSTEM_EXTRA} characters")
++            system_extra = op["text"]
++        elif kind == "def":
++            defs[op["name"]] = op["code"]
++        elif kind == "assign":
++            assigns[op["name"]] = op["code"]
++        elif kind == "import":
++            imports.append(op["code"])
++
++    lines = src.splitlines()
++    edits = []     # (start_line, end_line, new_text) with 1-based inclusive lines; insert when end < start
++    if new_cfg != cfg:
++        if cfg_node is None:
++            raise EditError("the policy file has no CONFIG to change")
++        edits.append((cfg_node.lineno, cfg_node.end_lineno, render_config(new_cfg)))
++    if system_extra is not None:
++        text = "SYSTEM_EXTRA = " + json.dumps(system_extra, ensure_ascii=False)
++        if ("assign", "SYSTEM_EXTRA") in spans:
++            a, b = spans[("assign", "SYSTEM_EXTRA")]
++            edits.append((a, b, text))
++        else:
++            edits.append((len(lines) + 1, len(lines), "\n" + text))
++    first_def = min([a for (k, _), (a, _) in spans.items() if k == "def"] or [len(lines) + 1])
++    for kind, table in (("assign", assigns), ("def", defs)):
++        for name, code in table.items():
++            if (kind, name) in spans:
++                a, b = spans[(kind, name)]
++                edits.append((a, b, code))
++            else:     # a new helper or constant: before the first function, so the file reads top-down
++                edits.append((first_def, first_def - 1, code + "\n\n"))
++    existing = {l.strip() for l in lines}
++    new_imports = [c for c in imports if c.strip() not in existing]
++    if new_imports:
++        at = spans.get(("last_import", None))
++        pos = at[1] + 1 if at else (cfg_node.lineno if cfg_node is not None else 1)
++        edits.append((pos, pos - 1, "\n".join(new_imports) + ("\n" if not at else "")))
++
++    # apply bottom-up; overlapping replacements would be a bug in the ops
++    edits.sort(key=lambda e: (e[0], e[1]), reverse=True)
++    for a, b, text in edits:
++        lines[a - 1:b] = text.split("\n")
++    out = "\n".join(lines).rstrip("\n") + "\n"
++    try:
++        ast.parse(out)
++    except SyntaxError as e:
++        raise EditError(f"the edited file has a syntax error: {e.msg} (line {e.lineno})")
++    return out
++
++
++def apply_reply(champion, reply, fields=None):
++    """reply text -> (candidate source, change). Raises EditError with a reason for the proposer."""
++    change, ops = parse(reply)
++    if not ops:
++        raise EditError("no edits found: use SET <key> = <value>, SYSTEM_EXTRA = \"...\", "
++                        "or a ```python block with a new prepare/finalize")
++    return apply(champion, ops, fields), change or "(no CHANGE line)"
++
++
++def compact(source, width=100):
++    """The champion as shown to the proposer in edit mode: CONFIG packed onto a few lines."""
++    tree, _ = _top_level(source)
++    node = next((nd for nd in tree.body if isinstance(nd, ast.Assign) and len(nd.targets) == 1
++                 and isinstance(nd.targets[0], ast.Name) and nd.targets[0].id == "CONFIG"), None)
++    if node is None:
++        return source
++    cfg = ast.literal_eval(node.value)
++    rows, cur = [], ""
++    for k, v in cfg.items():
++        item = f"{k}={_py(v)}"
++        if cur and len(cur) + len(item) + 2 > width:
++            rows.append(cur)
++            cur = ""
++        cur = f"{cur}, {item}" if cur else item
++    if cur:
++        rows.append(cur)
++    lines = source.splitlines()
++    body = [l for l in lines[:node.lineno - 1] if not l.startswith("#")]
++    shown = "\n".join(body).strip("\n")
++    shown = (shown + "\n" if shown else "") + "CONFIG:\n" + "\n".join("  " + r for r in rows)
++    return shown + "\n" + "\n".join(lines[node.end_lineno:]).rstrip() + "\n"
+diff -ruN -x runs -x lineage -x __pycache__ /home/user/hello-world/self-rewrite-lab/rewrite/loop.py lab/rewrite/loop.py
+--- /home/user/hello-world/self-rewrite-lab/rewrite/loop.py	2026-11-23 00:02:09.894749672 +0000
++++ lab/rewrite/loop.py	2026-11-22 23:59:17.756705356 +0000
+@@ -2,7 +2,8 @@
+ 
+   python3 -m rewrite.loop --generations 10
+ 
+-Each generation: the proposer writes a complete new genome (rewrite/genome/*.py contract) → static
++Each generation: the proposer writes a complete new genome (--format full), or only the change, which
++rewrite/edits.py applies to the champion to produce the complete file (--format edits) → static
+ sandbox check → dev score in a child process → the gate keeps it only if the total rises and no
+ category drops by more than --tolerance. The holdout split is scored once at the end, for the seed and
+ the final champion, and is never used for a decision or shown to the proposer.
+@@ -61,21 +62,30 @@
+     log({"event": "start", "gen": start_gen - 1, "genome": cur["genome"], "dev": cur["total"], "cats": cur["cats"]})
+ 
+     for gen in range(start_gen, start_gen + args.generations):
+-        pool = proposer.proposers()
+-        who, url = pool[gen % len(pool)]
+-        row = {"event": "attempt", "gen": gen, "proposer": who, "kept": False}
+-        try:
+-            reply = proposer.ask(proposer.build_prompt(champ, cur, refused), seed=gen,
+-                                 temperature=args.temperature, url=url)
+-        except Exception as e:     # noqa: BLE001
+-            row.update(change="(no reply)", why=f"proposer error: {e}"[:300])
++        row = {"event": "attempt", "gen": gen, "kept": False, "format": args.format}
++        prompt = proposer.build_prompt(champ, cur, refused, fmt=args.format)
++        src, no_reply = None, None
++        for k in range(1 + args.retries):     # a reply that cannot be parsed is retried with the error
++            try:
++                reply = proposer.ask(prompt, seed=gen + 1000 * k, temperature=args.temperature)
++            except Exception as e:     # noqa: BLE001
++                if k == 0:
++                    no_reply = f"proposer error: {e}"[:300]
++                break      # on a retry, keep the parse error of the first reply
++            name = f"a{gen:03d}.txt" if k == 0 else f"a{gen:03d}-retry{k}.txt"
++            open(os.path.join(out, "attempts", name), "w", encoding="utf-8").write(reply)
++            src, change, why = proposer.parse(reply, champ, args.format)
++            if src is not None:
++                break
++            row.setdefault("parse_errors", []).append(why)
++            prompt = proposer.retry_prompt(prompt, why)
++        if no_reply:     # as before: a server error is logged but is not a refused proposal
++            row.update(change="(no reply)", why=no_reply)
+             log(row)
+             continue
+-        src, change = proposer.extract(reply)
+-        open(os.path.join(out, "attempts", f"a{gen:03d}.txt"), "w", encoding="utf-8").write(reply)
+-        row["change"] = change if src else "(unparseable)"
++        row["change"] = change
+         if src is None:
+-            row["why"] = change
++            row["why"] = why
+         elif src.strip() == champ.strip():
+             row["why"] = "identical to the champion"
+         else:
+@@ -119,4 +129,8 @@
+     ap.add_argument("--tolerance", type=int, default=10)
+     ap.add_argument("--temperature", type=float, default=0.7)
+     ap.add_argument("--timeout", type=int, default=3600, help="seconds per evaluation")
++    ap.add_argument("--format", choices=["full", "edits"], default="edits",
++                    help="full: the proposer returns the whole file; edits: it returns only the change "
++                         "(SET lines, SYSTEM_EXTRA, new functions), applied to the champion by rewrite/edits.py")
++    ap.add_argument("--retries", type=int, default=1, help="extra tries when a reply cannot be parsed")
+     main(ap.parse_args())
+diff -ruN -x runs -x lineage -x __pycache__ /home/user/hello-world/self-rewrite-lab/rewrite/proposer.py lab/rewrite/proposer.py
+--- /home/user/hello-world/self-rewrite-lab/rewrite/proposer.py	2026-11-23 00:02:09.894206498 +0000
++++ lab/rewrite/proposer.py	2026-11-22 23:59:29.790572955 +0000
+@@ -1,6 +1,10 @@
+ """Asks a model to rewrite the genome. By default that model is the agent's own model (true self-rewriting);
+ point REWRITE_PROPOSER_URL / REWRITE_PROPOSER_MODEL at any OpenAI-compatible server to use another one.
+ 
++Two reply formats (rewrite.loop --format): "full", the complete new file in one code block, and "edits",
++only the change (SET lines, SYSTEM_EXTRA, new functions, SEARCH/REPLACE), which rewrite/edits.py applies
++to the champion. Both end as a complete candidate file judged by the same sandbox and gate.
++
+ The proposer sees: the current genome, its dev scores, dev failures from the weakest category, and the
+ recent attempts the gate refused. It never sees holdout tasks or results.
+ """
+@@ -10,23 +14,11 @@
+ 
+ import requests
+ 
++from rewrite import edits
++
+ URL = os.environ.get("REWRITE_PROPOSER_URL", os.environ.get("ION_BASE_URL", "http://localhost:8080/v1"))
+ MODEL = os.environ.get("REWRITE_PROPOSER_MODEL", os.environ.get("ION_MODEL", "local"))
+ 
+-
+-def proposers():
+-    """REWRITE_PROPOSERS="qwen=http://localhost:8080/v1,llama=http://localhost:8081/v1" → [(name, url)].
+-    Generation g uses proposer g % n, so different model families take turns rewriting the same genome.
+-    Unset → one proposer: the agent's own model."""
+-    spec = os.environ.get("REWRITE_PROPOSERS", "").strip()
+-    if not spec:
+-        return [("self", URL)]
+-    out = []
+-    for part in spec.split(","):
+-        name, _, url = part.strip().partition("=")
+-        out.append((name.strip(), url.strip()))
+-    return out
+-
+ INSTRUCTIONS = """You are improving the policy file of a small Hebrew question-answering agent.
+ The agent is a fixed program; this policy file is the only part you may change. An automatic judge
+ scores every version on a test set and keeps your version only if the total score rises and no
+@@ -46,19 +38,51 @@
+ Reply with the complete new file in a single ```python code block. Its first line must be a comment:
+ # CHANGE: <one short sentence describing your change>"""
+ 
+-
+-def build_prompt(source, result, refused, n_fail=6):
++# Edit format: a short prompt for a small model. It never asks for the whole file, the CONFIG is packed
++# onto a few lines, and one concrete reply shows the format. The harness turns the reply into a file.
++INSTRUCTIONS_EDITS = """You improve the policy of a small Hebrew question-answering agent. An automatic judge
++scores every version and keeps yours only if the total score rises and no category drops by more than 10.
++
++The policy has four parts. CONFIG holds the agent's switches. SYSTEM_EXTRA is text added to the agent's
++system prompt. prepare(question, doc) returns the question text the agent sees. finalize(question, answer)
++returns the final answer; the judge accepts it if it contains one of the expected strings.
++
++Do NOT write the whole file. Write only your change:
++line 1:  CHANGE: <one short sentence>
++then one or more of these:
++  SET <config key> = <new value>        (one line per switch)
++  SYSTEM_EXTRA = "<text in English or Hebrew>"
++  a ```python block with a complete new def prepare(question, doc) or def finalize(question, answer)
++Python rules: imports only from re, math, json, unicodedata, string, collections, itertools, functools.
++No while, no lambda, no class, no print, no names starting with _.
++
++Example of a reply in the right format (write your own change, not this one):
++CHANGE: cut the answer at the first newline
++```python
++def finalize(question, answer):
++    return answer.strip().split("\\n")[0]
++```
++
++Make ONE small change that should fix some of the failures below without breaking other categories."""
++
++
++def build_prompt(source, result, refused, n_fail=None, fmt="full"):
++    edit = fmt == "edits"
++    n_fail = n_fail if n_fail is not None else (4 if edit else 6)
++    trace_chars = 300 if edit else 500
+     cats = result["cats"]
+     weakest = sorted(cats, key=lambda c: cats[c])
+     fails = sorted(result.get("failures", []), key=lambda f: weakest.index(f["cat"]))[:n_fail]
+-    parts = [INSTRUCTIONS,
++    shown = edits.compact(source) if edit else source
++    parts = [INSTRUCTIONS_EDITS if edit else INSTRUCTIONS,
+              f"\nCurrent scores (percent correct per category): {json.dumps(cats)}; total {result['total']}.",
++             "\nCurrent policy:\n```python\n" + shown.strip() + "\n```" if edit else
+              "\nCurrent policy file:\n```python\n" + source.strip() + "\n```"]
+     if fails:
+         lines = []
+         for f in fails:
+             lines.append(f"- [{f['cat']}/{f['kind']}] question: {f['q']}\n  expected: {f['expected']}  "
+-                         f"got: {f['got']!r}\n  last steps: " + " || ".join(f["trace"][-3:])[:500])
++                         f"got: {f['got']!r}\n  last steps: " + " || ".join(f["trace"][-3:])[:trace_chars])
+         parts.append("\nFailures (weakest categories first):\n" + "\n".join(lines))
+     if refused:
+         parts.append("\nRecent attempts the judge refused (do not repeat them):\n" +
+@@ -66,8 +90,8 @@
+     return "\n".join(parts)
+ 
+ 
+-def ask(prompt, seed, temperature=0.7, max_tokens=1800, timeout=900, url=None):
+-    r = requests.post(f"{url or URL}/chat/completions", timeout=timeout, json={
++def ask(prompt, seed, temperature=0.7, max_tokens=1800, timeout=900):
++    r = requests.post(f"{URL}/chat/completions", timeout=timeout, json={
+         "model": MODEL, "messages": [{"role": "user", "content": prompt}],
+         "max_tokens": max_tokens, "temperature": temperature, "seed": seed})
+     if r.status_code != 200:
+@@ -84,5 +108,27 @@
+     if not blocks:
+         return None, "no python code block in the reply"
+     src = max(blocks, key=len).strip() + "\n"
+-    m = re.match(r"\s*#\s*CHANGE:\s*(.+)", src)
++    m = re.match(r"\s*#\s*CHANGE:\s*(.+)", src) or re.search(r"^\s*#?\s*CHANGE:\s*(.+)$", reply, re.M)
+     return src, (m.group(1).strip()[:160] if m else "(no CHANGE line)")
++
++
++def parse(reply, champion, fmt="full"):
++    """Returns (source, change, why): source is the complete candidate file, or None with `why` set."""
++    if fmt == "full":
++        src, change = extract(reply)
++        return (src, change, None) if src is not None else (None, "(unparseable)", change)
++    try:
++        src, change = edits.apply_reply(champion, reply)
++    except edits.EditError as e:
++        m = edits._CHANGE.search(reply or "")
++        return None, (m.group(1).strip()[:160] if m else "(unparseable)"), f"edit: {e}"
++    if src.strip() == champion.strip():
++        return None, change, ("edit: the reply changes nothing (the values are already set, or the file was "
++                              "copied back); send only the lines that change")
++    return src, change, None
++
++
++def retry_prompt(prompt, why):
++    """The same prompt with the parse error of the previous reply, for one more try."""
++    return (prompt + f"\n\nYour previous reply could not be used: {why}\n"
++            "Reply again, following the format exactly.")
+diff -ruN -x runs -x lineage -x __pycache__ /home/user/hello-world/self-rewrite-lab/rewrite/tests/test_edits.py lab/rewrite/tests/test_edits.py
+--- /home/user/hello-world/self-rewrite-lab/rewrite/tests/test_edits.py	1970-01-01 00:00:00.000000000 +0000
++++ lab/rewrite/tests/test_edits.py	2026-11-23 00:02:22.142026187 +0000
+@@ -0,0 +1,287 @@
++"""Offline tests for the edit-based proposal format (rewrite/edits.py) and the loop's use of it."""
++import glob
++import json
++import os
++import shutil
++import sys
++
++import pytest
++
++LAB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++sys.path[:0] = [os.path.join(LAB, "ion-loop"), LAB]
++
++from rewrite import edits, loop, proposer, sandbox   # noqa: E402
++
++SEED = open(os.path.join(LAB, "rewrite", "genome", "seed.py"), encoding="utf-8").read()
++ATTEMPTS = sorted(glob.glob(os.path.join(LAB, "rewrite", "lineage", "*", "attempts", "*.txt")))
++
++
++def apply(reply, champion=SEED):
++    src, change = edits.apply_reply(champion, reply)
++    mod = sandbox.load(src)     # every candidate the applier builds must pass the unchanged sandbox
++    return src, change, mod
++
++
++# ------------------------------------------------------------------------------------- valid edits
++
++def test_set_lines_and_system_extra():
++    src, change, mod = apply('CHANGE: more passages\nSET rag_k = 5\nSET extract = llm\n'
++                             'SET auto_web: false\nSYSTEM_EXTRA = "ענה במספר בלבד."')
++    assert change == "more passages"
++    assert mod.CONFIG["rag_k"] == 5 and mod.CONFIG["extract"] == "llm" and mod.CONFIG["auto_web"] is False
++    assert mod.SYSTEM_EXTRA == "ענה במספר בלבד."
++    assert list(mod.CONFIG) == list(sandbox.load(SEED).CONFIG)     # key order and all other keys kept
++    assert src.count("\n") == SEED.count("\n")                      # values changed in place
++
++
++def test_set_value_with_trailing_comment_and_markdown():
++    _, change, mod = apply("**CHANGE:** wider notes\n- SET `notes_chars` = 700  # more context\n")
++    assert change == "wider notes" and mod.CONFIG["notes_chars"] == 700
++
++
++def test_bare_assignment_is_used_only_for_config_keys():
++    _, _, mod = apply("CHANGE: k\nrag_k = 6\ntotal = 99\n")
++    assert mod.CONFIG["rag_k"] == 6
++
++
++def test_python_block_replaces_function_and_adds_helper_and_import():
++    reply = ('CHANGE: strip a final period\n```python\nimport re\n\n'
++             'def clean(a):\n    return re.sub(r"\\.$", "", a)\n\n'
++             'def finalize(question, answer):\n    return clean(answer.strip())\n```\n'
++             'This should help the basic category.')
++    src, _, mod = apply(reply)
++    assert mod.finalize("q", "  פריז. ") == "פריז"
++    assert mod.prepare("שאלה", None) == "שאלה"          # untouched
++    assert src.index("import re") < src.index("CONFIG") < src.index("def clean") < src.index("def prepare")
++
++
++def test_python_block_with_config_subscript_and_system_extra():
++    _, change, mod = apply('```python\n# CHANGE: hebrew prompt\nCONFIG["sys_hebrew"] = True\n'
++                           'SYSTEM_EXTRA = "Be brief."\n```')
++    assert change == "hebrew prompt" and mod.CONFIG["sys_hebrew"] is True and mod.SYSTEM_EXTRA == "Be brief."
++
++
++def test_set_lines_inside_an_unlabeled_code_block():
++    _, _, mod = apply("CHANGE: brief\n```\nSET brief = True\nSET max_steps = 5\n```")
++    assert mod.CONFIG["brief"] is True and mod.CONFIG["max_steps"] == 5
++
++
++def test_partial_config_dict_merges_instead_of_dropping_keys():
++    _, _, mod = apply('CHANGE: c\n```python\nCONFIG = {"rag_k": 4, "brief": True}\n```')
++    assert mod.CONFIG["rag_k"] == 4 and mod.CONFIG["brief"] and mod.CONFIG["extract"] == "structured"
++
++
++def test_search_replace_block():
++    reply = ('CHANGE: trim\n```\n<<<<<<< SEARCH\ndef finalize(question, answer):\n    return answer\n'
++             '=======\ndef finalize(question, answer):\n    return answer.strip()\n>>>>>>> REPLACE\n```')
++    _, _, mod = apply(reply)
++    assert mod.finalize("q", " x ") == "x"
++
++
++def test_search_replace_tolerates_indentation_noise():
++    _, _, mod = apply('CHANGE: k\n<<<<<<< SEARCH\n"rag_k": 3,\n=======\n    "rag_k": 7,\n>>>>>>> REPLACE\n')
++    assert mod.CONFIG["rag_k"] == 7
++
++
++def test_json_ops():
++    reply = ('CHANGE: json\n```json\n{"ops": [{"op": "set_config", "key": "notes_n", "value": 3},\n'
++             '{"op": "set_system_extra", "text": "Answer briefly."},\n'
++             '{"op": "replace_function", "name": "prepare", "body": "return question.strip()"}]}\n```')
++    _, _, mod = apply(reply)
++    assert mod.CONFIG["notes_n"] == 3 and mod.SYSTEM_EXTRA == "Answer briefly."
++    assert mod.prepare("  q ", None) == "q"
++
++
++def test_json_config_shape():
++    _, _, mod = apply('```json\n{"CONFIG": {"verify": true}}\n```')
++    assert mod.CONFIG["verify"] is True
++
++
++def test_edits_compose_on_an_evolved_champion():
++    first, _, _ = apply('CHANGE: a\nSET rag_k = 4\n```python\nimport re\n\ndef finalize(question, answer):\n'
++                        '    return re.sub(r"\\s+", " ", answer)\n```')
++    second, _, mod = apply('CHANGE: b\nSYSTEM_EXTRA = "x"\n```python\nimport re\n\ndef prepare(question, doc):\n'
++                           '    return question + " "\n```', champion=first)
++    assert second.count("import re") == 1 and mod.CONFIG["rag_k"] == 4 and mod.SYSTEM_EXTRA == "x"
++    assert mod.finalize("q", "a  b") == "a b" and mod.prepare("q", None) == "q "
++
++
++def test_unclosed_fence_from_a_truncated_reply():
++    _, _, mod = apply("CHANGE: t\n```python\ndef finalize(question, answer):\n    return answer.strip()\n")
++    assert mod.finalize("q", " a ") == "a"
++
++
++# ------------------------------------------------------------------------------------- malformed edits
++
++@pytest.mark.parametrize("reply, reason", [
++    ("", "empty reply"),
++    ("I think we should improve the prepare function.", "no edits found"),
++    ("CHANGE: x\nSET judge = True", "unknown CONFIG key 'judge'"),
++    ("CHANGE: x\nSET rag_k = many", "cannot read the value"),
++    ("CHANGE: x\nSET rag_k = 2.5", "whole number"),
++    ("CHANGE: x\nSET fewshot = 1", "True or False"),
++    ("CHANGE: x\nSET extract = magic", "must be one of"),
++    ("CHANGE: x\nSET tools = ['calc', 'shell']", "unknown tools"),
++    ("CHANGE: x\nSET doc_chars = 999999999", "out of range"),
++    ("CHANGE: x\n```python\ndef finalize(answer):\n    return answer\n```", "exactly 2 arguments"),
++    ("CHANGE: x\n```python\ndef finalize(question, answer)\n    return answer\n```", "syntax error"),
++    ("CHANGE: x\n```python\nfor i in range(3):\n    pass\n```", "only def, imports and assignments"),
++    ("CHANGE: x\n```python\nCONFIG = dict(rag_k=4)\n```", "plain dict literal"),
++    ("CHANGE: x\n```json\n{\"ops\": [{\"op\": \"delete_file\"}]}\n```", "unknown op"),
++    ("CHANGE: x\n```json\n{ops: []}\n```", "invalid JSON"),
++    ("CHANGE: x\n<<<<<<< SEARCH\ndef nothing():\n=======\nx = 1\n>>>>>>> REPLACE", "does not match"),
++    ("CHANGE: x\n<<<<<<< SEARCH\n):\n=======\n): \n>>>>>>> REPLACE", "matches 2 places"),
++    ("CHANGE: x\nSYSTEM_EXTRA = \"" + "א" * 2100 + "\"", "longer than 2000"),
++])
++def test_malformed_edits_are_refused_with_a_reason(reply, reason):
++    with pytest.raises(edits.EditError, match=reason):
++        edits.apply_reply(SEED, reply)
++
++
++def test_sandbox_still_judges_what_the_applier_builds():
++    # the applier does not enforce the sandbox rules: a forbidden import is applied, then refused there
++    src, _ = edits.apply_reply(SEED, "CHANGE: x\n```python\nimport os\n\ndef finalize(question, answer):\n"
++                                     "    return os.getcwd()\n```")
++    with pytest.raises(sandbox.Refused, match="import of 'os'"):
++        sandbox.check(src)
++
++
++def test_parse_reports_no_change_and_errors():
++    src, change, why = proposer.parse("CHANGE: same\nSET rag_k = 3", SEED, "edits")
++    assert src is None and change == "same" and "changes nothing" in why
++    src, change, why = proposer.parse("CHANGE: bad\nSET rag_k = x", SEED, "edits")
++    assert src is None and change == "bad" and why.startswith("edit: ")
++    src, change, why = proposer.parse("CHANGE: ok\nSET rag_k = 4", SEED, "edits")
++    assert src is not None and why is None
++
++
++# ------------------------------------------------------------------------------------- the real replies
++
++@pytest.mark.skipif(not ATTEMPTS, reason="no recorded attempts")
++@pytest.mark.parametrize("path", ATTEMPTS, ids=os.path.basename)
++def test_real_replies_never_crash_the_parser(path):
++    reply = open(path, encoding="utf-8").read()
++    for fmt in ("full", "edits"):
++        src, change, why = proposer.parse(reply, SEED, fmt)
++        assert isinstance(change, str) and change
++        assert (src is None) == (why is not None)
++        if src is not None and fmt == "edits":
++            sandbox.load(src)
++
++
++REAL = os.path.join(LAB, "rewrite", "lineage", "qwen2.5-1.5b", "attempts")
++
++
++@pytest.mark.skipif(not os.path.exists(os.path.join(REAL, "a003.txt")), reason="stage 1 attempts missing")
++def test_real_replies_get_a_useful_reason():
++    read = lambda n: open(os.path.join(REAL, n), encoding="utf-8").read()     # noqa: E731
++    # a001: the whole file echoed back, CHANGE line outside the block. Full mode now finds the CHANGE line.
++    assert proposer.extract(read("a001.txt"))[1].startswith("Restructure the question")
++    assert "changes nothing" in proposer.parse(read("a001.txt"), SEED, "edits")[2]
++    # a002: only a comment in the block (full mode refused it as "missing function prepare()")
++    assert "no edits found" in proposer.parse(read("a002.txt"), SEED, "edits")[2]
++    # a003: the file again, with a CHANGE comment; reformatted but equal
++    assert "changes nothing" in proposer.parse(read("a003.txt"), SEED, "edits")[2]
++
++
++# ------------------------------------------------------------------------------------- prompt and loop
++
++RESULT = {"total": 50.0, "cats": {"basic": 20, "calc": 80},
++          "failures": [{"id": "x", "cat": "calc", "kind": "calc", "q": "Q1", "expected": ["1"], "got": "2",
++                        "trace": ["model: hi"]},
++                       {"id": "y", "cat": "basic", "kind": "basic", "q": "Q2", "expected": ["b"], "got": "c",
++                        "trace": []}]}
++
++
++def test_edit_prompt_is_short_and_shows_an_example():
++    p = proposer.build_prompt(SEED, RESULT, [{"change": "c1", "why": "edit: no edits found"}], fmt="edits")
++    full = proposer.build_prompt(SEED, RESULT, [], fmt="full")
++    assert "Example of a reply" in p and "SET <config key>" in p and "c1: edit: no edits found" in p
++    assert p.index("Q2") < p.index("Q1") and "holdout" not in p.lower()
++    assert len(p.splitlines()) < len(full.splitlines())
++    assert "rag_k=3" in p and '"rag_k": 3' not in p        # CONFIG packed onto a few lines
++    # the example in the prompt is itself a valid reply
++    example = p[p.index("CHANGE: cut"):p.index("Make ONE")]
++    assert apply(example)[2].finalize("q", "a\nb") == "a"
++    assert "previous reply could not be used: boom" in proposer.retry_prompt(p, "boom")
++
++
++def run_loop(tmp_path, monkeypatch, replies, scores, fmt="edits", retries=1):
++    """Run rewrite.loop.main offline: scripted proposer replies, scripted gate scores."""
++    lab = tmp_path / "lab"
++    (lab / "rewrite" / "genome").mkdir(parents=True)
++    shutil.copy(os.path.join(LAB, "rewrite", "genome", "seed.py"), lab / "rewrite" / "genome" / "seed.py")
++    monkeypatch.setattr(loop, "LAB", str(lab))
++    monkeypatch.setattr(loop, "SEED", str(lab / "rewrite" / "genome" / "seed.py"))
++    monkeypatch.setattr(loop, "TAG", "test")
++    prompts = []
++
++    def ask(prompt, seed, temperature=0.7, **kw):
++        prompts.append(prompt)
++        return replies.pop(0)
++
++    def score(source, split="dev", timeout=0, log=None):
++        if split == "holdout":
++            return {"total": 0, "cats": {}}
++        for needle, res in scores:
++            if needle in source:
++                return dict(res, genome="g")
++        return {"total": 50.0, "cats": {"a": 50, "b": 50}, "genome": "g"}
++
++    monkeypatch.setattr(proposer, "ask", ask)
++    monkeypatch.setattr(loop.gate, "score", score)
++
++    class A:
++        generations, tolerance, temperature, timeout = 2, 10, 0.7, 10
++    A.format, A.retries = fmt, retries
++    loop.main(A)
++    rows = [json.loads(l) for l in open(lab / "rewrite" / "lineage" / "test" / "history.jsonl", encoding="utf-8")]
++    return lab, rows, prompts
++
++
++def test_loop_retries_a_parse_failure_once_and_accepts_an_edit(tmp_path, monkeypatch):
++    replies = ["I would improve things.",                                   # gen 1: unparseable
++               "CHANGE: more passages\nSET rag_k = 5",                      # gen 1 retry: accepted
++               "CHANGE: nope\nSET rag_k = lots", "still nothing"]           # gen 2: fails twice
++    lab, rows, prompts = run_loop(tmp_path, monkeypatch, replies,
++                                  [('"rag_k": 5', {"total": 60.0, "cats": {"a": 60, "b": 60}})])
++    g1, g2 = rows[1], rows[2]
++    assert g1["kept"] and g1["change"] == "more passages" and g1["parse_errors"][0].startswith("edit: no edits")
++    assert "could not be used: edit: no edits found" in prompts[1]
++    assert not g2["kept"] and len(g2["parse_errors"]) == 2 and g2["why"].startswith("edit: no edits")
++    assert "more passages" not in prompts[2] and "rag_k=5" in prompts[2]     # gen 2 sees the new champion
++    champ = (lab / "rewrite" / "lineage" / "test" / "champion.py").read_text(encoding="utf-8")
++    assert '"rag_k": 5' in champ and (lab / "rewrite" / "lineage" / "test" / "g001.py").exists()
++    assert (lab / "rewrite" / "lineage" / "test" / "attempts" / "a001-retry1.txt").exists()
++    assert rows[-1]["event"] == "end" and rows[-1]["accepted_total"] == 1
++
++
++def test_loop_full_format_still_works(tmp_path, monkeypatch):
++    full = "```python\n" + SEED.replace("return answer", "return answer.strip()") + "```"
++    lab, rows, _ = run_loop(tmp_path, monkeypatch, [full, "no code"],
++                            [("answer.strip()", {"total": 55.0, "cats": {"a": 55, "b": 55}})],
++                            fmt="full", retries=0)
++    assert rows[1]["kept"] and rows[1]["format"] == "full"
++    assert not rows[2]["kept"] and rows[2]["why"] == "no python code block in the reply"
++
++
++def test_echo_of_the_compact_view_changes_nothing_and_an_edited_echo_applies():
++    shown = edits.compact(SEED)
++    assert "changes nothing" in proposer.parse("```python\n" + shown + "```", SEED, "edits")[2]
++    edited = shown.replace("rag_k=3", "rag_k=4").replace("return answer", "return answer.strip()")
++    _, _, mod = apply("CHANGE: e\n```python\n" + edited + "```")
++    assert mod.CONFIG["rag_k"] == 4 and mod.CONFIG["tools"] == ["calc"] and mod.finalize("q", " a ") == "a"
++
++
++@pytest.mark.skipif(not os.path.exists(os.path.join(REAL, "a005.txt")), reason="stage 1 attempts a004-a005 missing")
++@pytest.mark.parametrize("name", ["a004.txt", "a005.txt"])
++def test_real_partial_replies_are_refused_in_full_mode_but_applied_in_edit_mode(name):
++    # the 1.5B model already answers with only the changed function; full mode throws that away
++    reply = open(os.path.join(REAL, name), encoding="utf-8").read()
++    src, _, _ = proposer.parse(reply, SEED, "full")
++    with pytest.raises(sandbox.Refused, match="missing function|CONFIG must be a dict"):
++        sandbox.load(src)     # a004: no finalize(); a005: no CONFIG (stage 1 logged "evaluation failed")
++    src, change, why = proposer.parse(reply, SEED, "edits")
++    assert why is None and change.startswith("Simplif")
++    mod = sandbox.load(src)
++    assert mod.CONFIG == sandbox.load(SEED).CONFIG and mod.prepare("A B", "d") != "A B"
+diff -ruN -x runs -x lineage -x __pycache__ /home/user/hello-world/self-rewrite-lab/rewrite/tests/test_rewrite.py lab/rewrite/tests/test_rewrite.py
+--- /home/user/hello-world/self-rewrite-lab/rewrite/tests/test_rewrite.py	2026-11-23 00:02:09.897313010 +0000
++++ lab/rewrite/tests/test_rewrite.py	2026-11-22 23:55:50.078051181 +0000
+@@ -122,10 +122,3 @@
+                   "    return question")
+     res = gate.score(hang, "dev", timeout=3)
+     assert "timeout" in res["error"]
+-
+-
+-def test_proposer_pool(monkeypatch):
+-    monkeypatch.delenv("REWRITE_PROPOSERS", raising=False)
+-    assert proposer.proposers() == [("self", proposer.URL)]
+-    monkeypatch.setenv("REWRITE_PROPOSERS", "qwen=http://a:1/v1, llama=http://b:2/v1")
+-    assert proposer.proposers() == [("qwen", "http://a:1/v1"), ("llama", "http://b:2/v1")]
+--- /home/user/hello-world/self-rewrite-lab/README.md	2026-11-22 23:53:38.026686568 +0000
++++ lab/README.md	2026-11-23 00:02:12.682419195 +0000
+@@ -35,11 +35,14 @@
+ # אינדקס החיפוש (פעם אחת): parquet של 20231101.he מ-huggingface.co/datasets/wikimedia/wikipedia
+ (cd ion-loop && python3 -m ion.build_index <תיקיית parquet> data/hewiki.db)
+ 
+-python3 -m pytest -q rewrite/tests                         # 18 בדיקות, בלי מודל
++python3 -m pytest -q rewrite/tests                         # 64 בדיקות, בלי מודל
+ python3 -m rewrite.evaluate --genome rewrite/genome/seed.py # ציון של גנום אחד
+ python3 -m rewrite.loop --generations 10                    # הלולאה
++python3 -m rewrite.loop --format full                       # המציע מחזיר קובץ שלם (מצב הריצה הראשונה)
+ ```
+ 
++פורמט ההצעה (`--format`, ברירת מחדל `edits`): המציע כותב רק את השינוי — `CHANGE:`, שורות `SET <מפתח> = <ערך>`, `SYSTEM_EXTRA = "..."`, בלוק python עם `prepare`/`finalize` חדשה, או בלוקי SEARCH/REPLACE — ו-`rewrite/edits.py` מחיל אותו על האלוף ובונה קובץ שלם, שעובר באותו ארגז חול ושער. תשובה שלא נקראת חוזרת למציע פעם אחת עם השגיאה (`--retries`).
++
+ משתני סביבה: `ION_BASE_URL` ו-`ION_TAG` (הסוכן, כמו ב-ion-loop), ו-`REWRITE_PROPOSER_URL` ו-`REWRITE_PROPOSER_MODEL` (מציע אחר מהסוכן).
+ 
+ ## תוצאות
