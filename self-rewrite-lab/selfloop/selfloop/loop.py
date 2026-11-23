@@ -84,22 +84,26 @@ def main() -> None:
 
     # base-model scores never change, so they are cached and shared across runs
     cache = a.data / f"base_scores_{Path(a.model).name}.npz"
-    if cache.exists():
-        z = np.load(cache)
-        get = lambda k: (z[k + "_nll"], z[k + "_ntok"])
-    else:
-        base = load_model(a.model)
-        store = {}
-        def put(k, v):
-            store[k + "_nll"], store[k + "_ntok"] = v
-        for n, d in cores.items():
-            put(n, score(base, tok, d))
-        for w in range(1, len(windows)):
-            put(f"fresh{w}", score(base, tok, windows[w]))
-            put(f"rag{w}", score(base, tok, windows[w], BM25([d for win in windows[:w] for d in win])))
-        del base
-        np.savez(cache, **store)
-        get = lambda k: (store[k + "_nll"], store[k + "_ntok"])
+    # Saved after every piece, so a restart keeps what was already scored (the container is reclaimed when
+    # idle, and scoring everything takes longer than one life of the machine).
+    store = dict(np.load(cache)) if cache.exists() else {}
+    jobs = [(n, d, None) for n, d in cores.items()]
+    jobs += [(f"fresh{w}", windows[w], None) for w in range(1, len(windows))]
+    jobs += [(f"rag{w}", windows[w], w) for w in range(1, len(windows))]
+    base = None
+    for key, docs, w in jobs:
+        if key + "_nll" in store:
+            continue
+        if base is None:
+            base = load_model(a.model)
+        index = BM25([d for win in windows[:w] for d in win]) if w else None
+        store[key + "_nll"], store[key + "_ntok"] = score(base, tok, docs, index) if index else score(base, tok, docs)
+        tmp = cache.with_name(cache.name + ".tmp.npz")
+        np.savez(tmp, **store)
+        tmp.replace(cache)
+        print(f"base scores: {key} saved", flush=True)
+    del base
+    get = lambda k: (store[k + "_nll"], store[k + "_ntok"])
     base_core = {n: get(n) for n in cores}
     base_core_bpt = {n: bits_per_token(*v) for n, v in base_core.items()}
     base_fresh = {w: get(f"fresh{w}") for w in range(1, len(windows))}
