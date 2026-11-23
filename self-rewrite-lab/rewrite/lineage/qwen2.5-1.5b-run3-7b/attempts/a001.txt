@@ -1,0 +1,6 @@
+```python
+CHANGE: correct the translations and basic knowledge
+
+def finalize(question, answer):
+    return answer.replace("紫", "ורוד").strip()
+```

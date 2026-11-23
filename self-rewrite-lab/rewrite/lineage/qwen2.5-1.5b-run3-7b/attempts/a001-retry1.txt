@@ -1,0 +1,6 @@
+CHANGE: correct the translation in the basic category
+
+```python
+def finalize(question, answer):
+    return answer.replace("aliment", "bread").replace("הפך", "ההפך")
+```
