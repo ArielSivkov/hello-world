@@ -1,0 +1,577 @@
+diff -ruN '--exclude=__pycache__' a/selfloop/README.md selfloop/README.md
+--- a/selfloop/README.md	2026-11-22 23:56:06.145696749 +0000
++++ b/selfloop/README.md	2026-11-23 00:03:38.037318249 +0000
+@@ -66,3 +66,21 @@
+ ```
+ python -m selfloop.report runs/all runs/anchor runs/stale runs/random runs/hard
+ ```
++
++## Stage 2: self-edits (prototype, not yet run on the model)
++
++`--train-on self` replaces the chosen documents by texts the incumbent model writes
++about them (`selfloop/selfedit.py`, SEAL-style "implications" prompt); `self+raw` trains
++on both; `raw` is stage 0b unchanged. Metric, prequential protocol and gate are the
++same. Every self-edit is saved to `<out>/selfedits_<t>.jsonl`, and per-document test
++scores to `<out>/scores_<t>.npz` so runs can be compared paired:
++
++```
++python -m selfloop.loop --out runs/self --anchor 0.5 --train-on self
++python -m selfloop.loop --out runs/selfraw --anchor 0.5 --train-on self+raw
++python -m selfloop.loop --out runs/fake --anchor 0.5 --train-on self --generator fake
++python -m selfloop.compare runs/selfraw runs/anchor2
++```
++
++`--generator fake` is a deterministic, model-free generator (the abstract's own
++sentences, rotated); it is used by the tests and as a "reformatting only" control.
+diff -ruN '--exclude=__pycache__' a/selfloop/selfloop/compare.py selfloop/selfloop/compare.py
+--- a/selfloop/selfloop/compare.py	1970-01-01 00:00:00.000000000 +0000
++++ b/selfloop/selfloop/compare.py	2026-11-23 00:03:25.873498034 +0000
+@@ -0,0 +1,45 @@
++"""Paired comparison of two runs on the same unseen weeks.
++
++  python -m selfloop.compare runs/self runs/anchor
++
++For every cycle both runs logged, prints paired_diff(A, B) in bits/token over
++the same test documents (negative: A is better), using the unchanged
++stats.paired_diff. Also compares A with base+retrieval.
++"""
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++
++import numpy as np
++
++from .stats import paired_diff
++
++
++def compare(a: Path, b: Path) -> list[dict]:
++    rows = []
++    for fa in sorted(a.glob("scores_*.npz"), key=lambda p: int(p.stem.split("_")[1])):
++        fb = b / fa.name
++        if not fb.exists():
++            continue
++        za, zb = np.load(fa), np.load(fb)
++        if list(za["ids"]) != list(zb["ids"]) or not np.array_equal(za["ntok"], zb["ntok"]):
++            raise ValueError(f"{fa.name}: the two runs were not scored on the same documents")
++        rows.append({"cycle": int(fa.stem.split("_")[1]),
++                     "A_vs_B": paired_diff(za["cand_nll"], zb["cand_nll"], za["ntok"]),
++                     "A+ret_vs_B+ret": paired_diff(za["cand_rag_nll"], zb["cand_rag_nll"], za["ntok"]),
++                     "A_vs_base+ret": paired_diff(za["cand_nll"], za["base_rag_nll"], za["ntok"])})
++    return rows
++
++
++def main() -> None:
++    a, b = Path(sys.argv[1]), Path(sys.argv[2])
++    print(f"A={a}  B={b}  (bits/token, negative = A better, 95% paired bootstrap)")
++    for r in compare(a, b):
++        cells = [f"{k} {v['diff']:+.4f} [{v['lo']:+.4f},{v['hi']:+.4f}]"
++                 for k, v in r.items() if k != "cycle"]
++        print(f"cycle {r['cycle']}: " + " | ".join(cells))
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN '--exclude=__pycache__' a/selfloop/selfloop/loop.py selfloop/selfloop/loop.py
+--- a/selfloop/selfloop/loop.py	2026-11-22 23:56:06.147370626 +0000
++++ b/selfloop/selfloop/loop.py	2026-11-23 00:03:25.869165515 +0000
+@@ -9,6 +9,12 @@
+   all     - every document of the new window
+   random  - a random half
+   hard    - the half the incumbent model predicts worst (self-directed)
++
++Stage 2 (--train-on): what the adapter trains on for the chosen documents
++  raw       - the documents themselves (stage 0b, the default)
++  self      - only self-edits the incumbent wrote from them (selfedit.py)
++  self+raw  - both
++The metric, the prequential protocol and the gate are the same in every mode.
+ """
+ from __future__ import annotations
+ 
+@@ -25,6 +31,7 @@
+ from .data import load_jsonl
+ from .model import load_model, load_tokenizer, new_adapter, score, train
+ from .retrieval import BM25
++from .selfedit import MODES, FakeGenerator, ModelGenerator, build_training_set, save_edits
+ from .stats import bits_per_token, gate, paired_diff
+ 
+ 
+@@ -56,6 +63,13 @@
+     ap.add_argument("--lr", type=float, default=2e-4)
+     ap.add_argument("--no-gate", action="store_true", help="accept every candidate")
+     ap.add_argument("--seed", type=int, default=0)
++    ap.add_argument("--train-on", default="raw", choices=MODES,
++                    help="raw documents, self-edits written by the incumbent, or both")
++    ap.add_argument("--generator", default="model", choices=["model", "fake"])
++    ap.add_argument("--edit-style", default="implications", choices=["implications", "restate", "qa"])
++    ap.add_argument("--edits-per-doc", type=int, default=2)
++    ap.add_argument("--edit-tokens", type=int, default=160, help="max new tokens per self-edit")
++    ap.add_argument("--cycles", type=int, default=None, help="stop after this many cycles")
+     a = ap.parse_args()
+ 
+     torch.manual_seed(a.seed)
+@@ -94,7 +108,8 @@
+     incumbent: Path | None = None       # adapter directory, None = base model
+     pool: list = []                      # documents already used for training
+     log = []
+-    for t in range(len(windows) - 1):
++    n_cycles = len(windows) - 1 if a.cycles is None else min(a.cycles, len(windows) - 1)
++    for t in range(n_cycles):
+         t0 = time.time()
+         new, test = train_windows[t], windows[t + 1]
+         if incumbent is None:
+@@ -105,10 +120,22 @@
+             inc = score(model, tok, test)   # incumbent, before it sees window t
+         sel_scores = score(model, tok, new) if a.policy == "hard" else (None, None)
+         chosen = select(a.policy, new, *sel_scores, seed=a.seed + t)
++        # stage 2: the incumbent (this model, before training) writes the training data
++        g0 = time.time()
++        gen = None
++        if a.train_on != "raw":
++            gen = FakeGenerator(a.edit_style) if a.generator == "fake" else \
++                ModelGenerator(model, tok, a.edit_style, max_new_tokens=a.edit_tokens)
++        items = build_training_set(a.train_on, chosen, gen, a.edits_per_doc, seed=a.seed + t,
++                                   test_ids={d.id for d in test})
++        if gen is not None:
++            save_edits(a.out / f"selfedits_{t}.jsonl", [d for d in items if "#se" in d.id])
++        gen_seconds = round(time.time() - g0)
++        # replay and anchor amounts follow the number of source documents, as in stage 0b
+         replay = random.Random(a.seed + t).sample(pool, min(len(pool), int(a.replay * len(chosen))))
+         anchor = random.Random(a.seed + 1000 + t).sample(
+             anchor_docs, min(len(anchor_docs), int(a.anchor * len(chosen))))
+-        loss = train(model, tok, chosen + replay + anchor, a.epochs, lr=a.lr, seed=a.seed + t)
++        loss = train(model, tok, items + replay + anchor, a.epochs, lr=a.lr, seed=a.seed + t)
+ 
+         cand_fresh = score(model, tok, test)
+         cand_core = {n: score(model, tok, d) for n, d in cores.items()}
+@@ -116,6 +143,10 @@
+         cand_rag = score(model, tok, test, index)
+ 
+         ntok = cand_fresh[1]
++        # per-document scores, so two runs can be compared paired (selfloop.compare)
++        np.savez(a.out / f"scores_{t}.npz", ids=np.array([d.id for d in test]),
++                 cand_nll=cand_fresh[0], cand_rag_nll=cand_rag[0], ntok=ntok,
++                 base_nll=base_fresh[t + 1][0], base_rag_nll=base_rag[t + 1][0])
+         fresh = paired_diff(cand_fresh[0], inc[0], ntok)
+         core = {n: paired_diff(cand_core[n][0], base_core[n][0], cand_core[n][1]) for n in cores}
+         decision = {"accept": True, "reasons": ["gate disabled"]} if a.no_gate else \
+@@ -123,6 +154,8 @@
+ 
+         row = {
+             "cycle": t, "train_window": t, "test_window": t + 1,
++            "train_on": a.train_on, "generator": gen.name if gen else None,
++            "n_items": len(items), "gen_seconds": gen_seconds,
+             "n_train": len(chosen), "n_replay": len(replay), "n_anchor": len(anchor), "train_loss": round(loss, 4),
+             "bpt": {
+                 "base": bits_per_token(*base_fresh[t + 1]),
+@@ -144,7 +177,7 @@
+         print(json.dumps({k: row[k] for k in ("cycle", "bpt", "candidate_vs_incumbent",
+                                                "core_vs_base", "decision", "seconds")}), flush=True)
+ 
+-        pool += chosen
++        pool += items   # in raw mode items == chosen, as before
+         if decision["accept"]:
+             path = a.out / f"adapter_{t}"
+             model.save_pretrained(str(path))
+diff -ruN '--exclude=__pycache__' a/selfloop/selfloop/selfedit.py selfloop/selfloop/selfedit.py
+--- a/selfloop/selfloop/selfedit.py	1970-01-01 00:00:00.000000000 +0000
++++ b/selfloop/selfloop/selfedit.py	2026-11-22 23:58:57.425301569 +0000
+@@ -0,0 +1,157 @@
++"""Stage 2: self-edits. The model writes the training data for its own next update.
++
++For every document chosen for training, a generator produces a few short texts
++(implications, restatements, question/answer pairs). Each one becomes a Doc with
++the original title and the generated text in place of the abstract, so the
++existing `model.train` trains on P(generated text | title) and the existing
++`model.score` / `stats.gate` judge the result on the unseen next week exactly as
++for raw documents. Nothing here touches the metric or the gate.
++
++Generators are pluggable:
++  fake   - deterministic, no model, no torch (tests and dry runs)
++  model  - the incumbent model itself (base + current adapter), i.e. SEAL's
++           inner loop without the RL outer loop
++
++Leakage rule: a generator only ever sees documents of the training window.
++`build_training_set` refuses source documents whose id is in the test window.
++"""
++from __future__ import annotations
++
++import hashlib
++import json
++import re
++from dataclasses import asdict, replace
++from pathlib import Path
++from typing import Protocol
++
++from .data import Doc
++
++MODES = ("raw", "self", "self+raw")
++
++# SEAL's knowledge-incorporation prompt asks for "implications" of a passage
++# (Zweiger et al. 2025, arXiv:2506.10943). A 135M base model is not instruction
++# tuned, so the prompt is a plain-text continuation with a fixed format.
++PROMPTS = {
++    "implications": "Title: {title}\nAbstract: {abstract}\n\nImplications of this paper:\n1.",
++    "restate": "Title: {title}\nAbstract: {abstract}\n\nThe same paper, explained in other words:\n",
++    "qa": "Title: {title}\nAbstract: {abstract}\n\nQuestions and answers about this paper:\nQ:",
++}
++
++
++class Generator(Protocol):
++    name: str
++
++    def generate(self, doc: Doc, n: int, seed: int) -> list[str]:
++        """Return up to n generated texts for `doc`."""
++
++
++_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
++
++
++def sentences(text: str) -> list[str]:
++    return [s.strip() for s in _SENT.split(text) if s.strip()]
++
++
++class FakeGenerator:
++    """Deterministic stand-in: rotates and relabels the abstract's own sentences.
++
++    Output depends only on (doc, n, seed, style), never on a model, so tests are
++    exact. It is not meant to be a good self-edit, only a well-formed one.
++    """
++
++    def __init__(self, style: str = "implications"):
++        self.style = style
++        self.name = f"fake-{style}"
++
++    def generate(self, doc: Doc, n: int, seed: int) -> list[str]:
++        sents = sentences(doc.abstract) or [doc.abstract]
++        h = int(hashlib.sha256(f"{doc.id}|{seed}".encode()).hexdigest(), 16)
++        out = []
++        for k in range(n):
++            start = (h + k) % len(sents)
++            picked = sents[start:] + sents[:start]
++            body = " ".join(picked[: max(1, len(sents) // 2)])
++            out.append(f"{self.style.capitalize()} {k + 1}: {body}")
++        return out
++
++
++class ModelGenerator:
++    """The model writes its own training data (sampling from the incumbent).
++
++    `model` is the same object the loop is about to train; generation runs in
++    eval mode with no gradient, before training starts, so it is the incumbent
++    (base + current adapter) that writes the data.
++    """
++
++    def __init__(self, model, tok, style: str = "implications", max_new_tokens: int = 160,
++                 temperature: float = 0.7, top_p: float = 0.9, max_prompt_tokens: int = 384):
++        self.model, self.tok, self.style = model, tok, style
++        self.max_new_tokens, self.temperature, self.top_p = max_new_tokens, temperature, top_p
++        self.max_prompt_tokens = max_prompt_tokens
++        self.name = f"model-{style}"
++
++    def generate(self, doc: Doc, n: int, seed: int) -> list[str]:
++        import torch  # local import: the rest of this module needs no torch
++
++        prompt = PROMPTS[self.style].format(title=doc.title, abstract=doc.abstract)
++        ids = self.tok(prompt, return_tensors="pt", add_special_tokens=False).input_ids
++        ids = ids[:, -self.max_prompt_tokens:]
++        if self.tok.bos_token_id is not None:
++            ids = torch.cat([torch.tensor([[self.tok.bos_token_id]]), ids], 1)
++        was_training = self.model.training
++        self.model.eval()
++        torch.manual_seed(seed)
++        with torch.no_grad():
++            out = self.model.generate(
++                input_ids=ids.repeat(n, 1), attention_mask=torch.ones_like(ids).repeat(n, 1),
++                do_sample=True, temperature=self.temperature, top_p=self.top_p,
++                max_new_tokens=self.max_new_tokens, pad_token_id=self.tok.pad_token_id)
++        if was_training:
++            self.model.train()
++        return [self.tok.decode(o[ids.shape[1]:], skip_special_tokens=True) for o in out]
++
++
++def clean(text: str, min_chars: int = 40) -> str | None:
++    """Keep the first block of generated text; drop it if too short or a copy of the prompt."""
++    text = text.split("\n\n")[0]
++    text = re.sub(r"\s+", " ", text).strip()
++    if len(text) < min_chars or text.lower().startswith(("title:", "abstract:")):
++        return None
++    return text
++
++
++def self_edit_docs(doc: Doc, gen: Generator, n: int, seed: int) -> list[Doc]:
++    """Turn one source document into up to n training Docs, with provenance."""
++    out, seen = [], set()
++    for k, raw in enumerate(gen.generate(doc, n, seed)):
++        text = clean(raw)
++        if text is None or text in seen or text == doc.abstract:
++            continue
++        seen.add(text)
++        out.append(replace(doc, id=f"{doc.id}#se{k}", abstract=text,
++                           categories=doc.categories + (f"self-edit:{gen.name}",)))
++    return out
++
++
++def build_training_set(mode: str, chosen: list[Doc], gen: Generator | None, n: int, seed: int,
++                       test_ids: set[str] = frozenset()) -> list[Doc]:
++    """The documents the adapter trains on this cycle (before replay and anchor)."""
++    if mode not in MODES:
++        raise ValueError(mode)
++    leaked = [d.id for d in chosen if d.id in test_ids]
++    if leaked:
++        raise ValueError(f"self-edit source documents from the test window: {leaked[:5]}")
++    if mode == "raw":
++        return list(chosen)
++    if gen is None:
++        raise ValueError("self-edit mode needs a generator")
++    edits = [e for i, d in enumerate(chosen) for e in self_edit_docs(d, gen, n, seed * 100003 + i)]
++    return edits if mode == "self" else list(chosen) + edits
++
++
++def save_edits(path: Path, docs: list[Doc]) -> None:
++    """Every self-generated text is kept on disk so it can be audited or removed."""
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with path.open("w") as f:
++        for d in docs:
++            f.write(json.dumps(asdict(d), ensure_ascii=False) + "\n")
+diff -ruN '--exclude=__pycache__' a/selfloop/tests/test_loop_wiring.py selfloop/tests/test_loop_wiring.py
+--- a/selfloop/tests/test_loop_wiring.py	1970-01-01 00:00:00.000000000 +0000
++++ b/selfloop/tests/test_loop_wiring.py	2026-11-23 00:03:25.873498034 +0000
+@@ -0,0 +1,126 @@
++"""End-to-end wiring of loop.main with a fake model and a fake generator.
++
++torch, transformers and peft are replaced by stubs, so this runs anywhere. It
++checks what the loop feeds to train() in each mode and that the decision still
++comes from the unchanged stats.gate; it says nothing about real model quality.
++"""
++import hashlib
++import importlib
++import json
++import sys
++import types
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++from selfloop.data import Doc, save_jsonl
++
++ABS = ("We study {k} for small models. Our method adds a cache. "
++       "It reduces latency by a margin. Results hold on three benchmarks.")
++
++
++class FakeModel:
++    def __init__(self, skill=0.0):
++        self.skill, self.training = skill, False
++
++    def save_pretrained(self, path):
++        Path(path).mkdir(parents=True, exist_ok=True)
++        (Path(path) / "skill").write_text(str(self.skill))
++
++
++def install_stubs(monkeypatch, calls):
++    torch = types.ModuleType("torch")
++    torch.manual_seed = lambda s: None
++    model = types.ModuleType("selfloop.model")
++    model.load_tokenizer = lambda name: object()
++    model.load_model = lambda name, adapter=None, trainable=False: \
++        FakeModel(float((Path(adapter) / "skill").read_text()) if adapter else 0.0)
++    model.new_adapter = lambda m: m
++
++    def score(m, tok, docs, index=None):
++        ntok = np.full(len(docs), 100.0)
++        noise = np.array([int(hashlib.sha256(d.id.encode()).hexdigest(), 16) % 7 for d in docs])
++        fresh = np.array([0.0 if d.id.startswith("core") else m.skill for d in docs])
++        return ntok * (5.0 - fresh) + noise - (5.0 if index else 0.0), ntok
++
++    def train(m, tok, docs, epochs, lr, seed):
++        calls.append([d.id for d in docs])
++        m.skill += 0.002 * len(docs)
++        return 1.0
++
++    model.score, model.train = score, train
++    monkeypatch.setitem(sys.modules, "torch", torch)
++    monkeypatch.setitem(sys.modules, "selfloop.model", model)
++    monkeypatch.delitem(sys.modules, "selfloop.loop", raising=False)
++    return importlib.import_module("selfloop.loop")
++
++
++def make_data(d: Path):
++    def docs(prefix, n):
++        return [Doc(f"{prefix}{i}", f"title {prefix}{i}", ABS.format(k=prefix), "", ("cs.CL",), "")
++                for i in range(n)]
++    for w in range(3):
++        save_jsonl(d / f"window_{w}.jsonl", docs(f"w{w}-", 40))
++    save_jsonl(d / "core_domain_old.jsonl", docs("core-d", 30))
++    save_jsonl(d / "core_general.jsonl", docs("core-g", 30))
++    save_jsonl(d / "anchor_general.jsonl", docs("anc", 60))
++
++
++@pytest.mark.parametrize("mode", ["raw", "self", "self+raw"])
++def test_loop_modes(monkeypatch, tmp_path, mode):
++    calls = []
++    loop = install_stubs(monkeypatch, calls)
++    make_data(tmp_path / "data")
++    out = tmp_path / "out"
++    monkeypatch.setattr(sys, "argv", ["loop", "--data", str(tmp_path / "data"), "--out", str(out),
++                                      "--anchor", "0.5", "--train-on", mode, "--generator", "fake"])
++    loop.main()
++    log = json.loads((out / "log.json").read_text())
++    assert len(log) == 2 and all(r["train_on"] == mode for r in log)
++    first = calls[0]
++    src = [i for i in first if i.startswith("w0-") and "#" not in i]
++    edits = [i for i in first if "#se" in i]
++    anchors = [i for i in first if i.startswith("anc")]
++    assert len(anchors) == 20                      # anchor follows source docs, as in stage 0b
++    if mode == "raw":
++        assert len(src) == 40 and not edits
++        assert not (out / "selfedits_0.jsonl").exists()
++    elif mode == "self":
++        assert not src and len(edits) == 80        # no raw document reaches the weights
++        assert (out / "selfedits_0.jsonl").exists()
++    else:
++        assert len(src) == 40 and len(edits) == 80
++    # nothing from the window being tested is ever trained on in the same cycle
++    assert not any(i.split("#")[0].startswith("w1-") for i in first)
++    # replay in cycle 1 is drawn from what cycle 0 trained on (edits in self mode)
++    replay = [i for i in calls[1] if i.startswith("w0-")]
++    assert len(replay) == 20
++    if mode == "self":
++        assert all("#se" in i for i in replay)
++    for r in log:
++        assert set(r["decision"]) == {"accept", "reasons"}
++        assert r["decision"]["accept"] == (r["candidate_vs_incumbent"]["hi"] < 0 and not r["decision"]["reasons"])
++
++
++def test_cycles_flag(monkeypatch, tmp_path):
++    calls = []
++    loop = install_stubs(monkeypatch, calls)
++    make_data(tmp_path / "data")
++    monkeypatch.setattr(sys, "argv", ["loop", "--data", str(tmp_path / "data"), "--out",
++                                      str(tmp_path / "o"), "--cycles", "1"])
++    loop.main()
++    assert len(json.loads((tmp_path / "o" / "log.json").read_text())) == 1
++
++
++def test_compare_two_runs(monkeypatch, tmp_path):
++    loop = install_stubs(monkeypatch, [])
++    make_data(tmp_path / "data")
++    for mode in ("raw", "self+raw"):
++        monkeypatch.setattr(sys, "argv", ["loop", "--data", str(tmp_path / "data"), "--out",
++                                          str(tmp_path / mode), "--train-on", mode, "--generator", "fake"])
++        loop.main()
++    from selfloop.compare import compare
++    rows = compare(tmp_path / "self+raw", tmp_path / "raw")
++    assert [r["cycle"] for r in rows] == [0, 1]
++    assert rows[0]["A_vs_B"]["hi"] < 0     # the stub rewards more training items
+diff -ruN '--exclude=__pycache__' a/selfloop/tests/test_selfedit.py selfloop/tests/test_selfedit.py
+--- a/selfloop/tests/test_selfedit.py	1970-01-01 00:00:00.000000000 +0000
++++ b/selfloop/tests/test_selfedit.py	2026-11-22 23:59:44.041734256 +0000
+@@ -0,0 +1,107 @@
++"""Stage 2 self-edits, offline: fake generator only, no torch, no model."""
++import hashlib
++from pathlib import Path
++
++import pytest
++
++from selfloop.data import Doc, load_jsonl
++from selfloop.selfedit import (FakeGenerator, build_training_set, clean, save_edits,
++                               self_edit_docs, sentences)
++
++ROOT = Path(__file__).resolve().parents[1]
++ABS = ("We study retrieval for small models. Our method adds a cache. "
++       "It reduces latency by a margin. Results hold on three benchmarks.")
++
++
++def doc(i, text=ABS):
++    return Doc(str(i), f"title {i}", text, "2026-10-01", ("cs.CL",), f"http://arxiv.org/abs/{i}")
++
++
++def test_sentences():
++    assert len(sentences(ABS)) == 4
++
++
++def test_fake_generator_is_deterministic_and_seeded():
++    g = FakeGenerator()
++    assert g.generate(doc(1), 3, 7) == g.generate(doc(1), 3, 7)
++    assert len(g.generate(doc(1), 3, 7)) == 3
++    outs = {tuple(g.generate(doc(1), 2, s)) for s in range(10)}
++    assert len(outs) > 1   # the seed matters
++
++
++def test_self_edit_docs_keep_title_and_provenance():
++    es = self_edit_docs(doc(5), FakeGenerator(), 2, 0)
++    assert [e.id for e in es] == ["5#se0", "5#se1"]
++    for e in es:
++        assert e.title == "title 5" and e.url == "http://arxiv.org/abs/5"
++        assert e.categories == ("cs.CL", "self-edit:fake-implications")
++        assert e.abstract != ABS
++
++
++def test_clean_drops_junk():
++    assert clean("too short") is None
++    assert clean("Title: copy of the prompt that goes on and on for a while") is None
++    assert clean("A real implication that is long enough to keep.\n\nTitle: next") == \
++        "A real implication that is long enough to keep."
++
++
++class Echo:
++    name = "echo"
++
++    def __init__(self, outs):
++        self.outs = outs
++
++    def generate(self, d, n, seed):
++        return self.outs[:n]
++
++
++def test_duplicates_and_copies_are_dropped():
++    g = Echo(["same implication that is long enough to keep", "same implication that is long enough to keep", ABS])
++    assert [e.abstract for e in self_edit_docs(doc(1), g, 3, 0)] == ["same implication that is long enough to keep"]
++
++
++def test_modes():
++    chosen = [doc(i) for i in range(4)]
++    g = FakeGenerator()
++    assert build_training_set("raw", chosen, None, 2, 0) == chosen
++    self_only = build_training_set("self", chosen, g, 2, 0)
++    assert len(self_only) == 8 and all("#se" in d.id for d in self_only)
++    both = build_training_set("self+raw", chosen, g, 2, 0)
++    assert both[:4] == chosen and both[4:] == self_only
++    assert build_training_set("self", chosen, g, 2, 0) == self_only   # reproducible
++    with pytest.raises(ValueError):
++        build_training_set("self", chosen, None, 2, 0)
++    with pytest.raises(ValueError):
++        build_training_set("bogus", chosen, g, 2, 0)
++
++
++def test_no_generation_from_the_test_window():
++    chosen = [doc(i) for i in range(4)]
++    with pytest.raises(ValueError, match="test window"):
++        build_training_set("self", chosen, FakeGenerator(), 2, 0, test_ids={"2"})
++
++
++def test_save_and_reload(tmp_path):
++    es = build_training_set("self", [doc(1), doc(2)], FakeGenerator(), 2, 0)
++    save_edits(tmp_path / "e.jsonl", es)
++    assert load_jsonl(tmp_path / "e.jsonl") == es
++
++
++def test_on_real_window_files():
++    w0 = load_jsonl(ROOT / "data" / "window_0.jsonl")
++    w1 = load_jsonl(ROOT / "data" / "window_1.jsonl")
++    es = build_training_set("self", w0, FakeGenerator(), 2, 0, test_ids={d.id for d in w1})
++    assert len(es) >= len(w0)            # at least one usable edit per paper
++    assert {e.id.split("#")[0] for e in es} <= {d.id for d in w0}
++
++
++# The judge must not move: same files as the stage 0b harness, byte for byte.
++JUDGE = {
++    "selfloop/stats.py": "2886ce09b223252c3285fcbb80c69d8d0c05bc3d77021c82ab783ad2df89f4b2",
++}
++
++
++def test_judge_unchanged():
++    for rel, want in JUDGE.items():
++        got = hashlib.sha256((ROOT / rel).read_bytes()).hexdigest()
++        assert got == want, f"{rel} changed"
