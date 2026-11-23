@@ -1,0 +1,5 @@
+CHANGE: set the final answer at least to a short string (one word, with no punctuation).
+```python
+def finalize(question, answer):
+    return " ".join([word for word in answer.split() if not word.endswith(".)"]).strip()
+```

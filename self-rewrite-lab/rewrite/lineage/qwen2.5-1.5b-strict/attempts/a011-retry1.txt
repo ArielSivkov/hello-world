@@ -1,0 +1,5 @@
+CHANGE: cut the answer at the first newline
+```python
+def finalize(question, answer):
+    return answer.strip().split("\n")[0]
+```
