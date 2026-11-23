@@ -152,9 +152,14 @@ def validate_extra(extra):
 
 def contains_test_answer(source, answers, min_len=3):
     """Return a short reason if any string constant in the genome holds an expected test answer."""
+    import unicodedata
     tree = ast.parse(source)
     consts = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
-    blob = "\n".join(consts).lower()
+    blob = "\n".join(consts)
+    blob = "".join(ch for ch in unicodedata.normalize("NFKC", blob) if unicodedata.category(ch) != "Cf").lower()
+    blob = blob + "\n" + blob[::-1]          # reversed literals ("ויקוט"[::-1]) are found too
+    # This scan is hygiene only. The real defence against memorising is that the gate half of dev is never
+    # shown to the proposer (evaluate.dev_halves).
     for a in answers:
         a = a.lower().strip()
         if len(a) >= min_len and a in blob:

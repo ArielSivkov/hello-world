@@ -31,6 +31,19 @@ RUNS = os.path.join(LAB, "rewrite", "runs", TAG)
 SPLITS = ("dev", "holdout", "shadow")
 
 
+def dev_halves(tasks):
+    """Split dev into a FEEDBACK half (its failures are shown to the proposer) and a GATE half (the decision
+    is made on it, and the proposer never sees its questions). Alternating within each task kind, so both
+    halves hold every kind. Round 2 of the black agent memorised the questions it was shown; this split is
+    what makes that worthless."""
+    seen, feedback, gate_half = {}, [], []
+    for t in tasks:
+        k = t.get("kind", t["cat"])
+        (feedback if seen.get(k, 0) % 2 == 0 else gate_half).append(t)
+        seen[k] = seen.get(k, 0) + 1
+    return feedback, gate_half
+
+
 def genome_id(source):
     return hashlib.sha1(source.encode()).hexdigest()[:12]
 
@@ -93,22 +106,28 @@ def evaluate(source, split="dev", verbose=True):
                     print(f"  {'✓' if r['ok'] else '✗'} {t['id']:<14} {r['secs']:>5}s  {ans[:60]!r}", flush=True)
     finally:
         worker.close()
+    shown = tasks
+    if split == "dev":
+        shown, tasks = dev_halves(tasks)      # metrics below are on the gate half only
     by, kinds = defaultdict(list), defaultdict(list)
     for t in tasks:
         r = done[t["id"]]
         by[t["cat"]].append(r["ok"])
         kinds[t.get("kind", t["cat"])].append(r["ok"])
     cats = {c: round(100 * sum(v) / len(v)) for c, v in sorted(by.items())}
-    result = {"genome": genome_id(source), "split": split, "n_correct": sum(r["ok"] for r in done.values()),
+    result = {"genome": genome_id(source), "split": split, "n_correct": sum(done[t["id"]]["ok"] for t in tasks),
               "n_tasks": len(tasks), "total": round(sum(cats.values()) / len(cats), 1), "cats": cats,
-              "kinds": {k: f"{sum(v)}/{len(v)}" for k, v in sorted(kinds.items())}}
+              "kinds": {k: f"{sum(v)}/{len(v)}" for k, v in sorted(kinds.items())},
+              "passed": sorted(t["id"] for t in tasks if done[t["id"]]["ok"])}
     if split == "dev":
-        # failures the proposer may learn from: the question and what the agent did, never the expected answer
+        # failures the proposer may learn from, from the FEEDBACK half only: the question and what the agent
+        # did, never the expected answer
+        result["feedback_correct"] = sum(done[t["id"]]["ok"] for t in shown)
         result["failures"] = [
             {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "q": t["q"][:300],
              "got": done[t["id"]]["answer"][:150],
              "trace": [f"{k}: {str(v)[:160]}" for k, v in done[t["id"]]["trace"]][-6:]}
-            for t in tasks if not done[t["id"]]["ok"]]
+            for t in shown if not done[t["id"]]["ok"]]
     return result
 
 

@@ -9,10 +9,13 @@ answers, or spraying many numbers, was accepted). Here an answer must commit to 
     spray guesses);
   - a text answer is at most MAX_WORDS words and must contain an expected answer as a whole word
     (Hebrew one-letter prefixes ו ה ב כ ל מ ש allowed, up to two);
+  - a hedge is wrong: an answer split by "או", "or", "/", "|", ";" or a line break into more than one
+    part (round 2 of the black agent passed "A או B" and "1941 / 1865");
   - the task's reject list still applies;
   - anything longer than MAX_CHARS is wrong.
 """
 import re
+import unicodedata
 
 _NIQQUD = re.compile(r"[֑-ׇ]")
 _INVISIBLE = re.compile(r"[​-‏‪-‮⁠-⁤﻿]")
@@ -35,9 +38,17 @@ def _whole(word, text):
     return re.search(rf"(?<![\w-])[והבכלמש]{{0,2}}{re.escape(word)}(?![\w-])", text) is not None
 
 
+_HEDGE = re.compile(r"\s(?:או|or)\s|[/|;\n]")
+
+
+def is_hedge(raw):
+    parts = [p for p in _HEDGE.split(raw) if p.strip(" .,:")]
+    return len(parts) > 1
+
+
 def correct(task, answer):
-    raw = _INVISIBLE.sub("", answer or "")
-    if not raw.strip() or len(raw) > MAX_CHARS:
+    raw = unicodedata.normalize("NFKC", _INVISIBLE.sub("", answer or ""))
+    if not raw.strip() or len(raw) > MAX_CHARS or is_hedge(raw.strip()):
         return False
     a = norm(raw)
     if any(_whole(norm(x), a) for x in task.get("reject", [])):

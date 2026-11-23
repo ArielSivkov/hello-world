@@ -93,6 +93,10 @@ def test_decide_rule():
     keep, reg, _ = gate.decide(cur, {"total": 60.0, "cats": {"a": 90, "b": 30}, "n_correct": 48})
     assert not keep and reg == {"b": (50, 30)}
     assert not gate.decide(cur, {"total": 50.5, "cats": {"a": 51, "b": 50}, "n_correct": 41})[0]   # margin
+    memo = {"total": 50.0, "cats": {"a": 50, "b": 50}, "n_correct": 40, "feedback_correct": 9}
+    assert not gate.decide(dict(cur, feedback_correct=3), memo)[0]       # feedback-only gains do not count
+    both = {"total": 51.0, "cats": {"a": 52, "b": 50}, "n_correct": 41, "feedback_correct": 4}
+    assert gate.decide(dict(cur, feedback_correct=3), both)[0]           # +1 gate, +1 feedback
     assert not gate.decide(cur, {"error": "timeout"})[0]
     assert not gate.decide(cur, {"total": 99, "cats": {"zz": 99}, "n_correct": 99})[0]
     assert gate.decide(cur, {"garbage": 1})[2].startswith("gate error")            # never raises

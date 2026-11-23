@@ -6,7 +6,9 @@ Hardened after swarm/2026-11-23 (red team + black agent):
   - the fingerprint covers every Python file the judge or the loop runs, the arena data and the index;
   - the judge child runs in its own session and is killed as a group on timeout;
   - no ratchet: no category may fall more than `tolerance` below the champion OR the seed;
-  - a minimum margin of correct tasks, so one lucky task is not a win;
+  - the gate half must rise by itself, and all of dev by a margin, with no loss on the feedback half;
+  - at most one task that passed may break (no trading categories against each other);
+  - dev decisions are made on the gate half only; the proposer sees failures of the feedback half;
   - decide() never raises.
 """
 import glob
@@ -77,7 +79,8 @@ def _valid(res, split, source):
     if not isinstance(cats, dict) or not cats or not all(
             isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100 for v in cats.values()):
         return "malformed result"
-    if not isinstance(res.get("n_correct"), int) or not isinstance(res.get("n_tasks"), int):
+    if not isinstance(res.get("n_correct"), int) or not isinstance(res.get("n_tasks"), int) or \
+            not isinstance(res.get("passed"), list):
         return "malformed result"
     return None
 
@@ -117,7 +120,7 @@ def score(source, split="dev", timeout=3600, log=None):
     return res
 
 
-def decide(cur, new, seed=None, tolerance=10, margin=2):
+def decide(cur, new, seed=None, tolerance=10, margin=2, max_broken=1):
     """Returns (keep, regressions, reason). Never raises."""
     try:
         if "error" in new:
@@ -130,9 +133,16 @@ def decide(cur, new, seed=None, tolerance=10, margin=2):
         regress = {c: (cur["cats"][c], new["cats"][c]) for c in floor if new["cats"][c] < floor[c]}
         if regress:
             return False, regress, f"regression {regress}"
-        gain = new["n_correct"] - cur["n_correct"]
-        if new["total"] <= cur["total"] or gain < margin:
-            return False, {}, f"total {cur['total']} -> {new['total']}, {gain:+d} tasks (needs a rise of {margin}+)"
+        broken = sorted(set(cur.get("passed", [])) - set(new.get("passed", [])))
+        if len(broken) > max_broken:     # no trading: a win may not be paid for by breaking working tasks
+            return False, {}, f"{len(broken)} tasks that passed now fail (at most {max_broken} allowed)"
+        gain = new["n_correct"] - cur["n_correct"]                   # gate half: never shown to the proposer
+        fb = new.get("feedback_correct", 0) - cur.get("feedback_correct", 0)
+        # The gate half must rise by itself (memorising the shown feedback questions cannot do that), and the
+        # rise over all of dev must reach the margin, with no loss on the feedback half.
+        if new["total"] <= cur["total"] or gain < 1 or fb < 0 or gain + fb < margin:
+            return False, {}, (f"total {cur['total']} -> {new['total']}, gate half {gain:+d}, feedback half "
+                               f"{fb:+d} (needs gate +1 and +{margin} overall)")
         return True, {}, "accepted"
     except Exception as e:     # noqa: BLE001
         return False, {}, f"gate error: {type(e).__name__}"

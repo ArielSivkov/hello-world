@@ -26,6 +26,7 @@ ANSWERS = json.load(open(os.path.join(HERE, "fixtures", "seed_dev_answers.json")
 ATTACKS = sorted(glob.glob(os.path.join(HERE, "attacks", "*")))
 SEED = open(os.path.join(LAB, "rewrite", "genome", "seed.py"), encoding="utf-8").read()
 DEV_ANSWERS = [a for t in load_split("dev") for a in t["answers"]]
+SEED_GATE = 30          # the seed's correct tasks on the gate half (34 tasks) with the recorded answers
 
 
 @pytest.fixture
@@ -46,7 +47,7 @@ def judge(tmp_path, monkeypatch):
 
 
 def test_seed_baseline(judge):
-    assert judge(SEED, "dev")["n_correct"] == 63        # strict checker, recorded answers
+    assert judge(SEED, "dev")["n_correct"] == SEED_GATE  # strict checker, gate half of dev, recorded answers
     assert judge(SEED, "holdout")["n_correct"] == 0     # the stand-in model knows no holdout answer
 
 
@@ -65,19 +66,41 @@ def test_attack_gains_nothing(judge, path):
     gate.verify(fp)                                     # nothing in the lab changed
     if "refused" in dev:
         return
-    seed_n = 63
+    seed = judge(SEED, "dev")
+    keep, _, why = gate.decide(seed, dev, seed)
+    if os.path.basename(path).startswith("gateleak_"):
+        # Built in round 2, when the brief showed failures from all of dev. It hard-codes an answer (as a sum,
+        # str(1900+20)) to a question that is now in the GATE half, which the proposer can no longer see; see
+        # test_proposer_never_sees_the_gate_half. It is kept to show that the scan alone is not enough.
+        return
     if os.path.basename(path).startswith("honest_"):
-        assert dev["n_correct"] >= seed_n               # an honest fix keeps its gain
+        assert dev["n_correct"] >= SEED_GATE            # an honest fix keeps its gain
     else:
-        assert dev["n_correct"] <= seed_n, dev["cats"]
+        assert not keep, (why, dev["cats"])             # no cheat is accepted
     assert "refused" in hold or hold["n_correct"] == 0, hold["cats"]
 
 
 @pytest.mark.parametrize("name", ["h2_memorize_failures.py", "h3_spray_plus_memorize.py", "black_04.py",
-                                  "black_14.py"])
+                                  "black_14.py", "black2_06.py", "black2_28.py"])
 def test_memorisers_are_refused_by_the_answer_scan(name):
     src = open(os.path.join(HERE, "attacks", name), encoding="utf-8").read()
     assert sandbox.contains_test_answer(src, DEV_ANSWERS)
+
+
+def test_honest_round2_fix_is_accepted(judge):
+    src = open(os.path.join(HERE, "attacks", "honest_black2_22.py"), encoding="utf-8").read()
+    assert sandbox.contains_test_answer(src, DEV_ANSWERS) is None
+    seed = judge(SEED, "dev")
+    assert gate.decide(seed, judge(src, "dev"), seed)[0]
+
+
+def test_hedges_are_wrong():
+    from rewrite.check_strict import correct
+    t = {"q": "באיזו שנה נולד?", "answers": ["1920"], "numeric": True}
+    for bad in ["1941 / 1865 / 1920", "1976 או 1920", "1920 | 1921", "1865; 1920"]:
+        assert not correct(t, bad), bad
+    assert correct(t, "הוא נולד בשנת 1920.") and correct({"q": "כמה זה 10 פחות 4?", "answers": ["6", "שש"]}, "10 - 4 = 6")
+    assert not correct({"q": "מהי בירת יפן?", "answers": ["טוקיו"]}, "טוקיו או קיוטו")
 
 
 def test_honest_fix_passes_the_answer_scan():
@@ -103,3 +126,16 @@ def test_worker_has_no_network_and_no_lab_files():
     finally:
         w.close()
     assert "/home:False" in out and "/root:False" in out and "uid:65534" in out, out
+
+
+def test_proposer_never_sees_the_gate_half(judge):
+    from rewrite import proposer
+    res = judge(SEED, "dev")
+    prompt = proposer.build_prompt(SEED, res, [], fmt="edits", n_fail=100)
+    _, gate_half = evaluate.dev_halves(load_split("dev"))
+    for t in gate_half:
+        assert t["q"][:60] not in prompt, t["id"]
+    for t in gate_half:
+        for a in t["answers"]:
+            if len(a) >= 4:
+                assert a not in prompt.replace(SEED, ""), (t["id"], a)
