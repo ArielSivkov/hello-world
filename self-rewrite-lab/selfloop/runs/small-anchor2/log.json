@@ -112,5 +112,62 @@
    "reasons": []
   },
   "seconds": 81
+ },
+ {
+  "cycle": 2,
+  "train_window": 2,
+  "test_window": 3,
+  "train_on": "raw",
+  "generator": null,
+  "n_items": 20,
+  "gen_seconds": 0,
+  "n_train": 20,
+  "n_replay": 10,
+  "n_anchor": 10,
+  "train_loss": 3.471,
+  "bpt": {
+   "base": 5.416952679418477,
+   "base+retrieval": 5.294702905413753,
+   "incumbent": 5.316231629844066,
+   "candidate": 5.280344120876673,
+   "candidate+retrieval": 5.243606816919256
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.035887508967393345,
+   "lo": -0.04386601886458242,
+   "hi": -0.027552445079554098
+  },
+  "candidate_vs_base": {
+   "diff": -0.13660855854180465,
+   "lo": -0.16713663794080894,
+   "hi": -0.10953253186383764
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.014358784537080282,
+   "lo": -0.03816381250703199,
+   "hi": 0.00937034176823203
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.051096088494497316,
+   "lo": -0.0654894927814584,
+   "hi": -0.03605330266164557
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.039951208370718305,
+    "lo": -0.0537893875906806,
+    "hi": -0.028178897647581396
+   },
+   "core_general": {
+    "diff": -0.008236039379685867,
+    "lo": -0.019853928084964844,
+    "hi": 0.00393082552012429
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 82
  }
 ]
