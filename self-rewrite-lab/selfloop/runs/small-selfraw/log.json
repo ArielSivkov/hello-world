@@ -1,0 +1,59 @@
+[
+ {
+  "cycle": 0,
+  "train_window": 0,
+  "test_window": 1,
+  "train_on": "self+raw",
+  "generator": "model-implications",
+  "n_items": 60,
+  "gen_seconds": 141,
+  "n_train": 20,
+  "n_replay": 0,
+  "n_anchor": 10,
+  "train_loss": 2.5446,
+  "bpt": {
+   "base": 5.36923348871563,
+   "base+retrieval": 5.262815866271896,
+   "incumbent": 5.36923348871563,
+   "candidate": 5.315506265034585,
+   "candidate+retrieval": 5.2476508518880705
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.053727223681045544,
+   "lo": -0.06996877713933514,
+   "hi": -0.03623746594064125
+  },
+  "candidate_vs_base": {
+   "diff": -0.053727223681045544,
+   "lo": -0.06996877713933514,
+   "hi": -0.03623746594064125
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": 0.05269039876268877,
+   "lo": 0.026593544295385445,
+   "hi": 0.0775033770976906
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.015165014383825337,
+   "lo": -0.026380177712956372,
+   "hi": -0.004496111003220847
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.03157932512194872,
+    "lo": -0.04556171349158558,
+    "hi": -0.02015838106358825
+   },
+   "core_general": {
+    "diff": -0.006460039928295913,
+    "lo": -0.012899266078773362,
+    "hi": -0.0007006999834274243
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 257
+ }
+]
