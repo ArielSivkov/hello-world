@@ -169,5 +169,62 @@
    "reasons": []
   },
   "seconds": 82
+ },
+ {
+  "cycle": 3,
+  "train_window": 3,
+  "test_window": 4,
+  "train_on": "raw",
+  "generator": null,
+  "n_items": 20,
+  "gen_seconds": 0,
+  "n_train": 20,
+  "n_replay": 10,
+  "n_anchor": 10,
+  "train_loss": 3.4096,
+  "bpt": {
+   "base": 5.048085979765507,
+   "base+retrieval": 4.929385938150246,
+   "incumbent": 4.938160457158442,
+   "candidate": 4.919799286907616,
+   "candidate+retrieval": 4.87996558168146
+  },
+  "candidate_vs_incumbent": {
+   "diff": -0.01836117025082551,
+   "lo": -0.02372606968241154,
+   "hi": -0.012806950495749798
+  },
+  "candidate_vs_base": {
+   "diff": -0.12828669285789118,
+   "lo": -0.15735202157284603,
+   "hi": -0.09932746987791735
+  },
+  "candidate_vs_base+retrieval": {
+   "diff": -0.00958665124263014,
+   "lo": -0.045188805404572874,
+   "hi": 0.026164342797214562
+  },
+  "candidate+retrieval_vs_base+retrieval": {
+   "diff": -0.04942035646878651,
+   "lo": -0.07254628517101508,
+   "hi": -0.02644888677706073
+  },
+  "core_vs_base": {
+   "core_domain_old": {
+    "diff": -0.03700466639762734,
+    "lo": -0.052014925085393716,
+    "hi": -0.022488881608744436
+   },
+   "core_general": {
+    "diff": -0.005425138339957947,
+    "lo": -0.01880799639346583,
+    "hi": 0.009237587809968813
+   }
+  },
+  "decision": {
+   "accept": true,
+   "reasons": []
+  },
+  "seconds": 81
  }
 ]
