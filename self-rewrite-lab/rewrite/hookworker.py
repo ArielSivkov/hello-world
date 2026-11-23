@@ -27,8 +27,11 @@ def fresh_call(msg):
     """Run one hook in a forked child that loads the genome afresh: no state (module dicts, attributes set
     on imported modules, caches) survives from one task to the next (red team r3_01: gate questions seen in
     prepare() were carried to feedback answers and so into the proposer prompt)."""
-    rfd, wfd = os.pipe()
-    pid = os.fork()
+    try:
+        rfd, wfd = os.pipe()
+        pid = os.fork()
+    except OSError:     # out of processes or fds: the judge must not count this as an ordinary task failure
+        return {"fatal": "resource"}
     if pid == 0:
         try:
             os.close(rfd)

@@ -234,3 +234,17 @@ def test_positive_control_is_accepted(judge):
     new = judge(src, "dev")
     keep, _, why = gate.decide(seed, new, seed)
     assert keep, (why, new["n_correct"], new["feedback_correct"], new["blind_correct"])
+
+
+def test_a_worker_that_cannot_fork_is_fatal_not_a_task_failure(monkeypatch):
+    """Under process-limit pressure fork() fails inside the worker. Counting that as an ordinary task failure
+    let the blind check fail open (a cheat was accepted while another test run held the uid's processes)."""
+    from rewrite import isolation
+    w = isolation.HookWorker(SEED)
+    try:
+        monkeypatch.setattr(w, "_call", lambda msg, timeout=0: {"fatal": "resource"})
+        with pytest.raises(isolation.HookError) as e:
+            w.call("finalize", q="q", a="a")
+        assert not isinstance(e.value, isolation.HookFailed)
+    finally:
+        w.close()

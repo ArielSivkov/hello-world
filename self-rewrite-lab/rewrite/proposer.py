@@ -5,8 +5,9 @@ Two reply formats (rewrite.loop --format): "full", the complete new file in one 
 only the change (SET lines, SYSTEM_EXTRA, new functions, SEARCH/REPLACE), which rewrite/edits.py applies
 to the champion. Both end as a complete candidate file judged by the same sandbox and gate.
 
-The proposer sees: the current genome, its dev scores, dev failures from the weakest category, and the
-recent attempts the gate refused. It never sees holdout tasks or results.
+The proposer sees: the current genome (or, in diverse mode, an archive parent), its feedback-half dev scores,
+feedback-half failures (weakest category first, or in diverse mode the rotating focus category), and the
+recent attempts the gate refused. It never sees the gate half, holdout tasks or expected answers.
 """
 import json
 import os
@@ -85,7 +86,9 @@ def _clean(s, n):
     return s[:n]
 
 
-def build_prompt(source, result, refused, n_fail=None, fmt="full"):
+def build_prompt(source, result, refused, n_fail=None, fmt="full", kind=None, focus=None):
+    if kind is not None:     # diverse mode (edit format only)
+        return build_diverse_prompt(source, result, refused, kind, focus, n_fail if n_fail is not None else 4)
     edit = fmt == "edits"
     n_fail = n_fail if n_fail is not None else (4 if edit else 6)
     trace_chars = 300 if edit else 500
@@ -107,6 +110,103 @@ def build_prompt(source, result, refused, n_fail=None, fmt="full"):
     if refused:
         parts.append("\nRecent attempts the judge refused (do not repeat them):\n" +
                      "\n".join(f"- {_clean(r['change'], 160)}: {_clean(r['why'], 200)}" for r in refused[-5:]))
+    return "\n".join(parts)
+
+
+# Diverse mode (rewrite.loop --diverse, upgrade 1): each generation asks for ONE kind of change, with a
+# one-line example of a valid reply of that kind. Run 3 (7B) never tried a CONFIG switch or prepare().
+INSTRUCTIONS_DIVERSE = """You improve the policy of a small Hebrew question-answering agent. An automatic judge
+scores every version and keeps yours only if the total score rises and no category drops by more than 10.
+
+The policy has four parts. CONFIG holds the agent's switches. SYSTEM_EXTRA is text added to the agent's
+system prompt. prepare(question, doc) returns the question text the agent sees. finalize(question, answer)
+returns the final answer; the judge expects ONE short answer (hedges and lists of guesses are wrong).
+
+Do NOT write the whole file. Line 1 of your reply: CHANGE: <one short sentence>
+Python rules: imports only from re, math, json, unicodedata, string, collections, itertools, functools.
+No while, no lambda, no class, no print, no names starting with _."""
+
+KIND_TEXT = {
+    "config": ("change ONE CONFIG switch. Write one line: SET <key> = <value>. Do not change anything else.",
+               'CHANGE: retrieve more passages\nSET rag_k = 4'),
+    "system_extra": ("set SYSTEM_EXTRA to ONE sentence (English or Hebrew) for the agent's system prompt. "
+                     "Write one line: SYSTEM_EXTRA = \"<sentence>\". Do not change anything else.",
+                     'CHANGE: ask for the bare answer\nSYSTEM_EXTRA = "Give only the answer itself, not a full sentence."'),
+    "prepare": ("write a new body of prepare(question, doc): it returns the question text the agent sees. "
+                "Send one ```python block with def prepare(question, doc) (small helper functions are allowed). "
+                "Do not change CONFIG, SYSTEM_EXTRA or finalize.",
+                'CHANGE: collapse repeated spaces in the question\n```python\ndef prepare(question, doc):\n'
+                '    return " ".join(question.split())\n```'),
+    "finalize": ("write a new body of finalize(question, answer): it returns the final answer the judge checks. "
+                 "Send one ```python block with def finalize(question, answer) (small helper functions are "
+                 "allowed). Do not change CONFIG, SYSTEM_EXTRA or prepare.",
+                 'CHANGE: drop a final period\n```python\ndef finalize(question, answer):\n'
+                 '    return answer.strip().rstrip(".")\n```'),
+}
+
+
+def config_menu(source):
+    """Every CONFIG switch the genome may set, with its valid values (from sandbox.py) and its current value."""
+    from rewrite import sandbox
+    try:
+        types = edits.config_types()
+    except Exception:     # noqa: BLE001
+        types = {}
+    try:
+        from rewrite import diverse
+        cur = diverse.parts(source)["config"]
+    except Exception:     # noqa: BLE001
+        cur = {}
+    lines = []
+    for key in list(cur) + [k for k in types if k not in cur]:
+        if key == "temperature":
+            continue      # locked to 0 by the sandbox
+        now = cur.get(key)
+        if key == "tools":
+            valid = f"a list drawn from {sorted(sandbox.ALLOWED_TOOLS)}"
+        elif key in sandbox.CHOICES:
+            valid = "one of " + ", ".join(repr(c) for c in sorted(sandbox.CHOICES[key]))
+        elif key in sandbox.RANGES:
+            lo, hi = sandbox.RANGES[key]
+            valid = f"a whole number {lo}..{hi}"
+        elif types.get(key) is bool or isinstance(now, bool):
+            valid = "True or False"
+        else:
+            continue
+        lines.append(f"  {key}: {valid}" + (f" (now {edits._py(now)})" if key in cur else ""))
+    return "\n".join(lines)
+
+
+def build_diverse_prompt(source, result, refused, kind, focus=None, n_fail=4, trace_chars=300):
+    """The prompt of one diverse generation: the kind of change asked for, an example reply of that kind, and
+    failures from the focus category of the FEEDBACK half (never the gate half, never an expected answer)."""
+    what, example = KIND_TEXT[kind]
+    cats = result.get("feedback_cats", result["cats"])   # the gate half is never described to the proposer
+    fails = list(result.get("failures", []))
+    if focus is not None:
+        picked = [f for f in fails if f["cat"] == focus]
+    else:
+        weakest = sorted(cats, key=lambda c: cats[c])
+        picked = sorted(fails, key=lambda f: weakest.index(f["cat"]) if f["cat"] in weakest else 99)
+    parts = [INSTRUCTIONS_DIVERSE,
+             f"\nTHIS TIME the kind of change is: {kind}. Your task: {what}",
+             "\nExample of a valid reply of this kind (write your own change, not this one):\n" + example]
+    if kind == "config":
+        parts.append("\nThe switches and their valid values:\n" + config_menu(source))
+    parts += [f"\nCurrent scores (percent correct per category): {json.dumps(cats)}.",
+              "\nCurrent policy:\n```python\n" + edits.compact(source).strip() + "\n```"]
+    if picked:
+        lines = []
+        for f in picked[:n_fail]:
+            # the expected answer is never shown: a proposer that sees it can memorise the test set
+            lines.append(f"- [{f['cat']}/{f['kind']}] question: {f['q']}\n  the agent answered (wrong): "
+                         f"{_clean(f['got'], 150)!r}\n  last steps: " + _clean(" || ".join(f["trace"][-3:]), trace_chars))
+        head = f"Failures in category {focus} (this generation's focus)" if focus else "Failures"
+        parts.append(f"\n{head}:\n" + "\n".join(lines))
+    if refused:
+        parts.append("\nRecent attempts the judge refused (do not repeat them):\n" +
+                     "\n".join(f"- {_clean(r['change'], 160)}: {_clean(r['why'], 200)}" for r in refused[-5:]))
+    parts.append(f"\nMake ONE {kind} change that should fix some of these failures without breaking other categories.")
     return "\n".join(parts)
 
 

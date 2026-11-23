@@ -10,6 +10,12 @@ the final champion, and is never used for a decision or shown to the proposer.
 
 State lives in rewrite/lineage/<ION_TAG>/: champion.py, g000.py (seed), gNNN.py (each accepted
 generation), attempts/ (every proposal, accepted or not) and history.jsonl.
+
+--diverse (default; upgrade 1, see rewrite/diverse.py): each generation asks for one kind of change
+(config, system_extra, prepare, finalize in turn), shows feedback-half failures of a rotating focus category,
+lets the proposer edit a parent drawn from an archive (--archive N, archive.json) and skips candidates whose
+normalized AST was already tried (seen.json). The gate and the acceptance rule are unchanged: every candidate
+is judged against the current champion. --no-diverse restores the previous behaviour.
 """
 import argparse
 import difflib
@@ -22,7 +28,7 @@ import time
 LAB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [os.path.join(LAB, "ion-loop"), LAB]
 
-from rewrite import gate, proposer, sandbox   # noqa: E402
+from rewrite import diverse as dv, gate, proposer, sandbox   # noqa: E402
 
 TAG = os.environ.get("ION_TAG", "qwen2.5-1.5b")
 RUN = os.environ.get("REWRITE_RUN", f"{TAG}-strict")     # the judge changed on 23.11; older runs stay in lineage/<TAG>/
@@ -55,7 +61,7 @@ def public_why(row):
     "contains an answer of the test set" and "+k tasks" as an oracle for dev answers. Format and syntax
     errors are passed on, since the proposer needs them to write a valid reply."""
     why = str(row.get("why", ""))
-    if why.startswith("edit:") or (why.startswith("sandbox:") and "answer of the test set" not in why):
+    if why.startswith(("edit:", "duplicate:")) or (why.startswith("sandbox:") and "answer of the test set" not in why):
         return why
     return "not accepted"      # crash, refusal or no improvement look the same (red team r3: one bit a round)
 
@@ -100,14 +106,39 @@ def main(args):
     start_gen = 1 + max([r.get("gen", 0) for r in prev] or [0])
     accepted_n = sum(1 for r in prev if r.get("event") == "attempt" and r.get("kept"))
     refused = [{"change": r["change"], "why": public_why(r)} for r in prev if r.get("event") == "attempt" and not r["kept"]]
-    log({"event": "start", "gen": start_gen - 1, "genome": cur["genome"], "dev": cur["total"], "cats": cur["cats"]})
+    # Diverse mode: kind/focus rotation, archive of parents, memory of tried code. Programmatic callers that
+    # do not set the flags get the previous behaviour.
+    diverse = bool(getattr(args, "diverse", False)) and args.format == "edits"
+    arch_n = int(getattr(args, "archive", 0) or 0) if diverse else 0
+    archive = dv.Archive(os.path.join(out, "archive.json"), arch_n, args.tolerance) if arch_n > 0 else None
+    seen = dv.Seen(os.path.join(out, "seen.json")) if diverse else None
+    if seen is not None:
+        seen.add(seed_src)
+        seen.add(champ)
+    if archive is not None:
+        if archive.seed_id is None:
+            archive.set_seed(seed_src, seed_dev)
+        archive.set_champion(champ, cur, start_gen - 1)
+    log({"event": "start", "gen": start_gen - 1, "genome": cur["genome"], "dev": cur["total"], "cats": cur["cats"],
+         **({"diverse": True, "archive": archive.ids() if archive else []} if diverse else {})})
 
     try:
         for gen in range(start_gen, start_gen + args.generations):
             pool = proposer.proposers()
             who, url = pool[gen % len(pool)]
             row = {"event": "attempt", "gen": gen, "proposer": who, "kept": False, "format": args.format}
-            prompt = proposer.build_prompt(champ, cur, refused, fmt=args.format)
+            parent, parent_res, kind = champ, cur, None
+            if diverse:
+                if archive is not None:
+                    pick = archive.select(gen)
+                    parent, parent_res = pick["source"], pick["result"]
+                    row["parent"] = pick["id"]
+                kind = dv.kind_for(gen)
+                row.update(kind=kind, focus=dv.focus_for(gen, parent_res))
+                prompt = proposer.build_prompt(parent, parent_res, refused, fmt=args.format, kind=kind,
+                                               focus=row["focus"])
+            else:
+                prompt = proposer.build_prompt(champ, cur, refused, fmt=args.format)
             src, no_reply = None, None
             for k in range(1 + args.retries):     # a reply that cannot be parsed is retried with the error
                 try:
@@ -120,7 +151,13 @@ def main(args):
                     break      # on a retry, keep the parse error of the first reply
                 name = f"a{gen:03d}.txt" if k == 0 else f"a{gen:03d}-retry{k}.txt"
                 open(os.path.join(out, "attempts", name), "w", encoding="utf-8").write(proposer.scrub(reply))
-                src, change, why = proposer.parse(reply, champ, args.format)
+                src, change, why = proposer.parse(reply, parent, args.format)
+                if src is not None and diverse:      # wrong kind, or code already tried: one more try
+                    why = dv.check_kind(parent, src, kind)
+                    if why is None and src in seen:
+                        why = "duplicate: this code was already tried (same normalized AST); try a different change"
+                    if why is not None:
+                        src = None
                 if src is not None:
                     break
                 row.setdefault("parse_errors", []).append(why)
@@ -132,10 +169,14 @@ def main(args):
             row["change"] = change
             if src is None:
                 row["why"] = why
+                if why.startswith("duplicate:"):
+                    row["duplicate"] = True      # skipped: no evaluation spent on it
             elif src.strip() == champ.strip():
                 row["why"] = "identical to the champion"
             else:
-                row["diff"] = short_diff(champ, src)
+                row["diff"] = short_diff(parent, src)
+                if seen is not None:
+                    seen.add(src)
                 try:
                     sandbox.check(src)
                     hit = sandbox.contains_test_answer(src, dev_answers)
@@ -166,6 +207,10 @@ def main(args):
                         champ, cur = src, new
                         open(champ_path, "w", encoding="utf-8").write(src)
                         open(os.path.join(out, f"g{accepted_n:03d}.py"), "w", encoding="utf-8").write(src)
+                    if archive is not None:      # admission: the seed's floor only; acceptance is the gate's
+                        if keep:
+                            archive.set_champion(src, new, gen)
+                        row["archived"] = keep or archive.consider(src, new, seed_dev, gen)
             if not row["kept"]:
                 refused.append({"change": row["change"], "why": public_why(row)})
             log(row)
@@ -176,6 +221,9 @@ def main(args):
     gate.verify(judge)
     end = {"event": "end", "gen": start_gen + args.generations - 1, "accepted_total": accepted_n,
            "dev": cur["total"], "cats": cur["cats"], "dev_seed": seed_dev["total"]}
+    if archive is not None:
+        end["archive"] = [{"id": e["id"], "gen": e["gen"], "score": e["score"], "children": e["children"]}
+                          for e in archive.entries]
     for split in ("holdout", "shadow"):      # measured once, never used for a decision or shown to a proposer
         if os.path.exists(os.path.join(LAB, "ion-loop", "arena", f"{split}.jsonl")):
             for who, src in (("champion", champ), ("seed", seed_src)):
@@ -184,7 +232,7 @@ def main(args):
     log(end)
 
 
-if __name__ == "__main__":
+def parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--generations", type=int, default=10)
     ap.add_argument("--tolerance", type=int, default=10)
@@ -195,4 +243,13 @@ if __name__ == "__main__":
                     help="full: the proposer returns the whole file; edits: it returns only the change "
                          "(SET lines, SYSTEM_EXTRA, new functions), applied to the champion by rewrite/edits.py")
     ap.add_argument("--retries", type=int, default=1, help="extra tries when a reply cannot be parsed")
-    main(ap.parse_args())
+    ap.add_argument("--diverse", action=argparse.BooleanOptionalAction, default=True,
+                    help="edits format only: rotate the kind of change and the focus category, pick parents from "
+                         "an archive and skip code already tried (--no-diverse: the previous behaviour)")
+    ap.add_argument("--archive", type=int, default=8,
+                    help="with --diverse: archive size (0 = always edit the champion)")
+    return ap
+
+
+if __name__ == "__main__":
+    main(parser().parse_args())

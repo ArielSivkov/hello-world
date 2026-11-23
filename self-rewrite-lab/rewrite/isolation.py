@@ -164,6 +164,9 @@ class HookWorker:
 
     def call(self, op, **kw):
         r = self._call({"op": op, **kw})
+        if "fatal" in r:     # the worker could not run the hook at all (e.g. fork failed): the result would be wrong
+            self.close()
+            raise HookError(f"hook worker failed: {str(r['fatal'])[:40]}")
         if not isinstance(r.get("r"), str):
             raise HookFailed(str(r.get("e", "bad reply"))[:120])
         return r["r"]
