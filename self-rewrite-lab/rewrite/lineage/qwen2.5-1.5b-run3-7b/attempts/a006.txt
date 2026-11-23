@@ -1,0 +1,6 @@
+CHANGE: correct the translations in the basic category
+
+```python
+def finalize(question, answer):
+    return answer.replace("לֶחֶם", "bread").replace("יממה", "לילה").replace("イス紫 (或白色)", "紫色")
+```

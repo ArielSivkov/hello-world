@@ -1,0 +1,6 @@
+CHANGE: Simplify the basic category answers to be more direct and accurate.
+
+```python
+def finalize(question, answer):
+    return answer.strip().split("\n")[0]
+```

@@ -1,0 +1,6 @@
+CHANGE: correct the basic category handling by ensuring the agent provides simple answers
+
+```python
+def finalize(question, answer):
+    return answer.strip().split("\n")[0]
+```
