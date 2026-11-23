@@ -1,0 +1,7 @@
+e6  gate.score -> {'genome': 'forged', 'split': 'dev', 'total': 100.0, 'cats': {'basic': 100, 'calc': 100, 'longdoc': 100, 'multistep': 100, 'web': 100}}
+e6  gate.decide -> (True, {})
+e6b gate.decide CRASHED: KeyError 'cats'
+e9  genome exits at once, but gate.score(timeout=5) returned after 5.0s -> {'error': 'timeout after 5s'}
+e9  orphan still alive after the gate gave up: 4366 sleep 40
+4381 /bin/sh -c pgrep -af 'sleep 40'
+e11b holdout tasks (question AND answer) inside the next proposer prompt: 4 ['calc-020', 'calc-021', 'web-022', 'web-023']

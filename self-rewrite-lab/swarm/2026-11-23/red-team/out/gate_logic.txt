@@ -1,0 +1,12 @@
+1) ratchet: longdoc loses one task per generation, basic gains two; every step is checked only against the previous champion
+   gen 1: longdoc 100 ->  92, total 86.8 -> 87.2  kept=True
+   gen 2: longdoc  92 ->  83, total 87.2 -> 87.4  kept=True
+   gen 3: longdoc  83 ->  75, total 87.4 -> 87.8  kept=True
+   gen 4: longdoc  75 ->  67, total 87.8 -> 88.2  kept=True
+   after 4 accepted generations: longdoc 100 -> 67 (a 33-point drop that no single step reported)
+2) one task of noise is enough: +1 basic task (5 points in one category) = (True, {})
+3) rounding: category scores are rounded to integers with banker's rounding before averaging
+   web 2/16 -> 12  6/16 -> 38  10/16 -> 62  14/16 -> 88
+4) tie: equal totals are refused (strict >): (False, {})
+5) a category missing from the new result counts as 0, so it is a regression: (False, {'web': (88, 0)})
+6) result without 'cats' (forged RESULT line, see e6b) crashes decide: KeyError 'cats'
