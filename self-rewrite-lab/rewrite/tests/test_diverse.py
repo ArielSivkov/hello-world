@@ -83,6 +83,9 @@ def judge(tmp_path, monkeypatch):
     return lambda source, split="dev": evaluate.evaluate(source, split, verbose=False)
 
 
+@pytest.mark.skipif(__import__("rewrite.arenas", fromlist=["name"]).name() != "v2",
+                    reason="needs the seed's recorded answers (v2 only): with no answers both halves score 0 and "
+                           "the feedback/gate score check cannot tell them apart")
 def test_diverse_prompts_never_show_the_gate_half_or_expected_answers(judge):
     res = judge(SEED)
     fb_half, gate_half = evaluate.dev_halves(load_split("dev"))

@@ -4,8 +4,9 @@ and never executes genome code: the hooks run in an isolated worker (rewrite/iso
   python3 -m rewrite.evaluate --genome rewrite/genome/seed.py --split dev --out result.json
 
 The result is written to --out (a path the genome cannot reach), never parsed from stdout.
-Per-task results are cached by (judge fingerprint, genome source, task); `ok` is recomputed from the
-cached answer on every load, so a cache entry cannot vouch for itself.
+Per-task results are cached by (arena, judge fingerprint, genome source, task); `ok` is recomputed from the
+cached answer on every load, so a cache entry cannot vouch for itself. The task set is chosen by the ARENA
+environment variable (rewrite/arenas.py: v2, the default, or v3).
 """
 import argparse
 import hashlib
@@ -22,7 +23,8 @@ sys.path[:0] = [ION, LAB]
 
 from ion import agent                          # noqa: E402
 from ion.agent import Config                   # noqa: E402
-from arena.run import load as load_split       # noqa: E402
+from rewrite.arenas import load as load_split  # noqa: E402  (respects ARENA=v2|v3; ion-loop's loader reads v2)
+from rewrite import arenas                     # noqa: E402
 from rewrite import sandbox                    # noqa: E402
 from rewrite.check_strict import correct       # noqa: E402
 from rewrite.isolation import HookWorker, HookError, HookFailed   # noqa: E402
@@ -50,7 +52,7 @@ def genome_id(source):
 
 
 def others_by_kind():
-    """Answers of every task, grouped by kind, over all splits (judge side only)."""
+    """Answers of every task, grouped by kind, over all splits of the current arena (judge side only)."""
     pool = {}
     for split in SPLITS:
         try:
@@ -109,7 +111,7 @@ def evaluate(source, split="dev", verbose=True):
             agent.BASE_PROMPT_HE = agent.BASE_PROMPT_HE + "\n" + extra
         cfg = Config(**cfg_dict)
         os.makedirs(RUNS, exist_ok=True)
-        path = os.path.join(RUNS, f"{split}-{judge_id()}-{genome_id(source)}.jsonl")
+        path = os.path.join(RUNS, f"{arenas.name()}-{split}-{judge_id()}-{genome_id(source)}.jsonl")
         tasks = load_split(split)
         pool = others_by_kind()
         by_id = {t["id"]: t for t in tasks}

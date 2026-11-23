@@ -28,10 +28,12 @@ import time
 LAB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [os.path.join(LAB, "ion-loop"), LAB]
 
-from rewrite import diverse as dv, gate, proposer, sandbox   # noqa: E402
+from rewrite import arenas, diverse as dv, gate, proposer, sandbox   # noqa: E402
 
 TAG = os.environ.get("ION_TAG", "qwen2.5-1.5b")
 RUN = os.environ.get("REWRITE_RUN", f"{TAG}-strict")     # the judge changed on 23.11; older runs stay in lineage/<TAG>/
+if arenas.name() != arenas.DEFAULT and "REWRITE_RUN" not in os.environ:
+    RUN = f"{RUN}-{arenas.name()}"       # a v3 run never resumes a v2 lineage: its recorded scores are on other tasks
 SEED = os.path.join(LAB, "rewrite", "genome", "seed.py")
 
 
@@ -99,8 +101,7 @@ def main(args):
         sys.exit(f"champion does not evaluate: {cur['error']}")
     seed_src = open(SEED, encoding="utf-8").read()
     seed_dev = cur if champ == seed_src else gate.score(seed_src, "dev", args.timeout, runlog)
-    sys.path.insert(0, os.path.join(LAB, "ion-loop"))
-    from arena.run import load as load_split
+    from rewrite.arenas import load as load_split      # the same arena as the judge (ARENA=v2|v3)
     dev_answers = [a for t in load_split("dev") for a in t["answers"]]
     prev = [json.loads(l) for l in open(hist_path, encoding="utf-8")] if os.path.exists(hist_path) else []
     start_gen = 1 + max([r.get("gen", 0) for r in prev] or [0])
@@ -225,7 +226,7 @@ def main(args):
         end["archive"] = [{"id": e["id"], "gen": e["gen"], "score": e["score"], "children": e["children"]}
                           for e in archive.entries]
     for split in ("holdout", "shadow"):      # measured once, never used for a decision or shown to a proposer
-        if os.path.exists(os.path.join(LAB, "ion-loop", "arena", f"{split}.jsonl")):
+        if os.path.exists(arenas.path(split)):
             for who, src in (("champion", champ), ("seed", seed_src)):
                 r = gate.score(src, split, args.timeout, runlog)
                 end[f"{split}_{who}"] = {k: r.get(k) for k in ("total", "cats", "n_correct", "error") if k in r}

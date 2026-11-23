@@ -19,14 +19,20 @@ LAB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [os.path.join(LAB, "ion-loop"), LAB]
 
 from rewrite import evaluate, gate, sandbox   # noqa: E402
-from arena.run import load as load_split      # noqa: E402
+from rewrite import arenas                    # noqa: E402
+from rewrite.arenas import load as load_split # noqa: E402  (the judge's arena: ARENA=v2, the default, or v3)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ANSWERS = json.load(open(os.path.join(HERE, "fixtures", "seed_dev_answers.json"), encoding="utf-8"))
 ATTACKS = sorted(p for p in glob.glob(os.path.join(HERE, "attacks", "*")) if os.path.isfile(p))
 SEED = open(os.path.join(LAB, "rewrite", "genome", "seed.py"), encoding="utf-8").read()
 DEV_ANSWERS = [a for t in load_split("dev") for a in t["answers"]]
-SEED_GATE = 30          # the seed's correct tasks on the gate half (34 tasks) with the recorded answers
+# the seed's correct tasks on the gate half with the recorded answers: 30 of 38 on v2. The recorded answers
+# are for v2 dev questions, and no v3 question is a v2 question, so on v3 the stand-in model knows nothing.
+SEED_GATE = {"v2": 30, "v3": 0}[arenas.name()]
+V2_ONLY = pytest.mark.skipif(arenas.name() != "v2", reason="needs the seed's recorded answers, which exist "
+                             "only for v2 dev questions (fixtures/seed_dev_answers.json); under ARENA="
+                             f"{arenas.name()} the stand-in model answers nothing, so there is no gain to test")
 
 
 @pytest.fixture
@@ -47,7 +53,9 @@ def judge(tmp_path, monkeypatch):
 
 
 def test_seed_baseline(judge):
-    assert judge(SEED, "dev")["n_correct"] == SEED_GATE  # strict checker, gate half of dev, recorded answers
+    dev = judge(SEED, "dev")
+    assert dev["n_correct"] == SEED_GATE                # strict checker, gate half of dev, recorded answers
+    assert dev["n_tasks"] == len(evaluate.dev_halves(load_split("dev"))[1])   # the chosen arena's gate half
     assert judge(SEED, "holdout")["n_correct"] == 0     # the stand-in model knows no holdout answer
 
 
@@ -84,6 +92,7 @@ def test_attack_gains_nothing(judge, path):
     assert "refused" in hold or hold["n_correct"] == 0, hold["cats"]
 
 
+@V2_ONLY
 @pytest.mark.parametrize("name", ["h2_memorize_failures.py", "h3_spray_plus_memorize.py", "black_04.py",
                                   "black_14.py", "black2_06.py", "black2_28.py"])
 def test_memorisers_are_refused_by_the_answer_scan(name):
@@ -91,6 +100,7 @@ def test_memorisers_are_refused_by_the_answer_scan(name):
     assert sandbox.contains_test_answer(src, DEV_ANSWERS)
 
 
+@V2_ONLY
 def test_honest_round2_fix_is_accepted(judge):
     src = open(os.path.join(HERE, "attacks", "honest_black2_22.py"), encoding="utf-8").read()
     assert sandbox.contains_test_answer(src, DEV_ANSWERS) is None
@@ -139,10 +149,12 @@ def test_proposer_never_sees_the_gate_half(judge):
     _, gate_half = evaluate.dev_halves(load_split("dev"))
     for t in gate_half:
         assert t["q"][:60] not in prompt, t["id"]
-    for t in gate_half:
+    from rewrite.check_strict import _whole, norm
+    shown = norm(prompt.replace(SEED, ""))
+    for t in gate_half:     # as a word (Hebrew prefixes allowed): v3's "וינה" is inside the name "לוינהרץ"
         for a in t["answers"]:
             if len(a) >= 4:
-                assert a not in prompt.replace(SEED, ""), (t["id"], a)
+                assert not _whole(norm(a), shown), (t["id"], a)
 
 
 EDIT_REPLIES = sorted(glob.glob(os.path.join(HERE, "attacks", "edits", "*.txt")))
@@ -186,6 +198,7 @@ def test_word_spray_is_wrong():
     assert not correct(t, "Jerusalem/טוקיו", others=["jerusalem"])
 
 
+@V2_ONLY
 def test_a_policy_that_ignores_the_model_is_refused(judge):
     seed = judge(SEED, "dev")
     assert seed["blind_correct"] == 0
@@ -213,9 +226,11 @@ def test_hooks_keep_no_state_so_the_gate_half_cannot_leak(judge, name):
     if "refused" in res:
         return
     prompt = proposer.build_prompt(src, res, [], fmt="edits", n_fail=100)
-    _, gate_half = evaluate.dev_halves(load_split("dev"))
-    for t in gate_half:
-        assert t["q"] not in prompt and t["q"][-22:] not in prompt, t["id"]     # the entity is at the end
+    shown, gate_half = evaluate.dev_halves(load_split("dev"))
+    shared = {t["q"][-22:] for t in shown}    # a template tail that a feedback question ends with too (v3 word
+    for t in gate_half:                       # problems: "כמה ספרים יש בה עכשיו?") is no leak
+        assert t["q"] not in prompt, t["id"]
+        assert t["q"][-22:] in shared or t["q"][-22:] not in prompt, t["id"]     # the entity is at the end
 
 
 def test_the_proposer_sees_only_feedback_half_scores(judge):
@@ -225,6 +240,7 @@ def test_the_proposer_sees_only_feedback_half_scores(judge):
     assert json.dumps(res["feedback_cats"]) in prompt and str(res["total"]) not in prompt.split("Current policy")[0]
 
 
+@V2_ONLY
 def test_positive_control_is_accepted(judge):
     """Sanhedrin case 001, takkanah 2: the judge had been tested only against cheats. A known-good, general
     change (rewrite/genome/positive_control.py) must be accepted, or the judge is too closed to learn from."""

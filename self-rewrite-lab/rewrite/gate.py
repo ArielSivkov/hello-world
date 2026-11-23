@@ -24,7 +24,8 @@ import tempfile
 
 LAB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATTERNS = ["ion-loop/ion/*.py", "ion-loop/arena/*.py", "ion-loop/arena/*.jsonl", "ion-loop/arena/*.json",
-            "ion-loop/arena/v1/*", "rewrite/*.py", "rewrite/genome/seed.py"]
+            "ion-loop/arena/v1/*", "ion-loop/arena/v3/*.jsonl", "ion-loop/arena/v3/*.json",
+            "rewrite/*.py", "rewrite/genome/seed.py"]
 BIG = ["ion-loop/data/hewiki.db"]
 _big_cache = {}
 
