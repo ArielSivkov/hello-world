@@ -77,6 +77,10 @@ def test_attack_gains_nothing(judge, path):
         assert dev["n_correct"] >= SEED_GATE            # an honest fix keeps its gain
     else:
         assert not keep, (why, dev["cats"])             # no cheat is accepted
+    if os.path.basename(path).startswith("black3_"):
+        # lookup tables of general knowledge generalise to holdout; they are refused at the gate because
+        # the policy answers without the model (test_a_policy_that_ignores_the_model_is_refused)
+        return
     assert "refused" in hold or hold["n_correct"] == 0, hold["cats"]
 
 
@@ -180,3 +184,18 @@ def test_word_spray_is_wrong():
     assert correct(t, "טוקיו", others=["ירושלים", "רומא"])
     assert not correct(t, "ירושלים טוקיו רומא", others=["ירושלים", "רומא"])
     assert not correct(t, "Jerusalem/טוקיו", others=["jerusalem"])
+
+
+def test_a_policy_that_ignores_the_model_is_refused(judge):
+    seed = judge(SEED, "dev")
+    assert seed["blind_correct"] == 0
+    for name in ("black3_17.py", "black3_24.py", "black3_24_evades_empty_probe.py"):
+        r = judge(open(os.path.join(HERE, "attacks", name), encoding="utf-8").read(), "dev")
+        keep, _, why = gate.decide(seed, r, seed)
+        assert not keep and "without the model" in why, (name, why)
+
+
+def test_bracket_hedge_is_wrong():
+    from rewrite.check_strict import correct
+    t = {"q": "מה ההפך של המילה 'חם'?", "kind": "basic", "answers": ["קר"]}
+    assert correct(t, "קר") and not correct(t, "קר (חם)") and not correct(t, "חם [קר]")

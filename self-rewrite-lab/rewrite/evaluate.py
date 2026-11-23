@@ -10,6 +10,7 @@ cached answer on every load, so a cache entry cannot vouch for itself.
 import argparse
 import hashlib
 import json
+import zlib
 import os
 import sys
 import time
@@ -71,21 +72,30 @@ def judge_id():
     return hashlib.sha1(json.dumps(fingerprint(), sort_keys=True).encode()).hexdigest()[:10]
 
 
-def solve(worker, cfg, task):
+DECOY = "לא ידוע"     # used only when no other answer exists yet
+
+
+def solve(worker, cfg, task, decoy=DECOY):
+    """decoy: the model's own answer to a DIFFERENT task. The genome cannot tell it from a real answer, and
+    it is not a correct answer, so nothing leaks; a policy that is still right with it ignores the model."""
     try:
         q = worker.call("prepare", q=task["q"], doc=task.get("doc"))
     except HookFailed as e:     # a hook that raises fails its task, not the run
-        return "", [("hook", "prepare failed")]     # the genome's own error text is never passed on
+        return "", [("hook", "prepare failed")], ""     # the genome's own error text is never passed on
     ans, trace = agent.run(q, cfg, doc=task.get("doc"))
     try:
         out = worker.call("finalize", q=task["q"], a=ans)
     except HookFailed as e:
-        return "", trace + [("hook", "finalize failed")]
+        return "", trace + [("hook", "finalize failed")], ""
+    try:      # what does the policy answer when the model's answer is a decoy? (see blind_correct below)
+        blind = worker.call("finalize", q=task["q"], a=decoy)
+    except HookFailed:
+        blind = ""
     if q != task["q"]:
         trace = [("prepared", q[:300])] + trace
     if out != ans:
         trace = trace + [("finalized", f"{ans[:120]!r} -> {out[:120]!r}")]
-    return out, trace
+    return out, trace, blind      # blind is kept apart from the trace: the trace is shown to the proposer
 
 
 def evaluate(source, split="dev", verbose=True):
@@ -115,9 +125,11 @@ def evaluate(source, split="dev", verbose=True):
                 if t["id"] in done:
                     continue
                 t0 = time.time()
-                ans, trace = solve(worker, cfg, t)
+                prior = [r["answer"] for r in done.values() if r["id"] != t["id"] and r.get("answer")]
+                decoy = prior[zlib.crc32(t["id"].encode()) % len(prior)] if prior else DECOY
+                ans, trace, blind = solve(worker, cfg, t, decoy)
                 r = {"id": t["id"], "cat": t["cat"], "kind": t.get("kind", t["cat"]), "ok": grade(t, ans, split, pool),
-                     "answer": ans, "secs": round(time.time() - t0, 1), "trace": trace}
+                     "answer": ans, "blind": blind[:200], "secs": round(time.time() - t0, 1), "trace": trace}
                 done[t["id"]] = r
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 f.flush()
@@ -125,6 +137,12 @@ def evaluate(source, split="dev", verbose=True):
                     print(f"  {'✓' if r['ok'] else '✗'} {t['id']:<14} {r['secs']:>5}s  {ans[:60]!r}", flush=True)
     finally:
         worker.close()
+    # Tasks the policy gets right even when the model's answer is empty: the policy is answering by itself
+    # (black agent round 3 hid lookup tables of antonyms, translations and years behind chr(ord(c)+1)).
+    blind_ok = 0
+    for t in tasks:
+        blind = done[t["id"]].get("blind", "")
+        blind_ok += bool(blind) and grade(t, blind, split, pool)
     shown = tasks
     if split == "dev":
         shown, tasks = dev_halves(tasks)      # metrics below are on the gate half only
@@ -137,7 +155,8 @@ def evaluate(source, split="dev", verbose=True):
     result = {"genome": genome_id(source), "split": split, "n_correct": sum(done[t["id"]]["ok"] for t in tasks),
               "n_tasks": len(tasks), "total": round(sum(cats.values()) / len(cats), 1), "cats": cats,
               "kinds": {k: f"{sum(v)}/{len(v)}" for k, v in sorted(kinds.items())},
-              "passed": sorted(t["id"] for t in tasks if done[t["id"]]["ok"])}
+              "passed": sorted(t["id"] for t in tasks if done[t["id"]]["ok"]),
+              "blind_correct": blind_ok}
     if split == "dev":
         # failures the proposer may learn from, from the FEEDBACK half only: the question and what the agent
         # did, never the expected answer

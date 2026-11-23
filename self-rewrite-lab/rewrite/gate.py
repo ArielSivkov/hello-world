@@ -8,6 +8,7 @@ Hardened after swarm/2026-11-23 (red team + black agent):
   - no ratchet: no category may fall more than `tolerance` below the champion OR the seed;
   - the gate half must rise by itself, and all of dev by a margin, with no loss on the feedback half;
   - at most one task that passed may break (no trading categories against each other);
+  - the policy may not answer by itself: finalize(question, <decoy>) must not be right on more than one task;
   - dev decisions are made on the gate half only; the proposer sees failures of the feedback half;
   - decide() never raises.
 """
@@ -120,7 +121,7 @@ def score(source, split="dev", timeout=3600, log=None):
     return res
 
 
-def decide(cur, new, seed=None, tolerance=10, margin=2, max_broken=1):
+def decide(cur, new, seed=None, tolerance=10, margin=2, max_broken=1, blind_max=1):
     """Returns (keep, regressions, reason). Never raises."""
     try:
         if "error" in new:
@@ -133,6 +134,9 @@ def decide(cur, new, seed=None, tolerance=10, margin=2, max_broken=1):
         regress = {c: (cur["cats"][c], new["cats"][c]) for c in floor if new["cats"][c] < floor[c]}
         if regress:
             return False, regress, f"regression {regress}"
+        if new.get("blind_correct", 0) > max(cur.get("blind_correct", 0), blind_max):
+            return False, {}, (f"the policy answers {new['blind_correct']} tasks without the model "
+                               f"(finalize given a decoy answer); at most {blind_max} allowed")
         broken = sorted(set(cur.get("passed", [])) - set(new.get("passed", [])))
         if len(broken) > max_broken:     # no trading: a win may not be paid for by breaking working tasks
             return False, {}, f"{len(broken)} tasks that passed now fail (at most {max_broken} allowed)"

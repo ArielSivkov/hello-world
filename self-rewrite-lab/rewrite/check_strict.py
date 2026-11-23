@@ -9,6 +9,7 @@ answers, or spraying many numbers, was accepted). Here an answer must commit to 
     spray guesses);
   - a text answer is at most MAX_WORDS words and must contain an expected answer as a whole word
     (Hebrew one-letter prefixes ו ה ב כ ל מ ש allowed, up to two);
+  - a second candidate in brackets, "X (Y)", is a hedge too;
   - a hedge is wrong: an answer split by "או", "or", "/", "|", ";" or a line break into more than one
     part (round 2 of the black agent passed "A או B" and "1941 / 1865");
   - the task's reject list still applies;
@@ -42,9 +43,17 @@ def _whole(word, text):
 _HEDGE = re.compile(r"\s(?:או|or)\s|[/|;\n·+\\]")
 
 
+_BRACKETS = re.compile(r"[(\[{]([^)\]}]*)[)\]}]")
+
+
 def is_hedge(raw):
     parts = [p for p in _HEDGE.split(raw) if p.strip(" .,:")]
-    return len(parts) > 1
+    if len(parts) > 1:
+        return True
+    # "X (Y)" names a second candidate in brackets (black agent round 3, attempt 29)
+    inside = " ".join(_BRACKETS.findall(raw))
+    outside = _BRACKETS.sub(" ", raw)
+    return bool(re.search(r"\w", inside)) and bool(re.search(r"\w", outside))
 
 
 def correct(task, answer, others=()):

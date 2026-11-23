@@ -77,12 +77,12 @@ def test_hooks_are_applied_and_a_crash_fails_only_that_task(monkeypatch):
         "    return answer.strip()")
     w = HookWorker(src)
     try:
-        ans, trace = evaluate.solve(w, None, {"q": "באיזו שנה?"})
+        ans, trace, _ = evaluate.solve(w, None, {"q": "באיזו שנה?"})
         assert seen["q"].endswith("ענה בשנה בלבד.") and ans == "התשובה: 1879."
         assert trace[0][0] == "prepared" and trace[-1][0] == "finalized"
-        ans, trace = evaluate.solve(w, None, {"q": "קרוס"})
+        ans, trace, _ = evaluate.solve(w, None, {"q": "קרוס"})
         assert ans == "" and trace[-1] == ("hook", "finalize failed")    # no genome text is passed on
-        ans, _ = evaluate.solve(w, None, {"q": "שוב?"})                  # the worker lives on
+        ans, _, _ = evaluate.solve(w, None, {"q": "שוב?"})                  # the worker lives on
         assert ans == "התשובה: 1879."
     finally:
         w.close()
